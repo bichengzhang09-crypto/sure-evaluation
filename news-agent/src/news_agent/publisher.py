@@ -20,7 +20,8 @@ from .renderer import END, START, diff, outside_block
 def allowed(path: str) -> bool:
     safe_path(path)
     return path in {"README.md", "NEWS.md", "docs/news/index.html", "docs/news/banner.svg"} or (
-        path.startswith("docs/news/") and path.endswith((".md", ".yaml")))
+        path.startswith("docs/news/") and path.endswith((".md", ".yaml"))) or (
+        path.startswith("docs/news/cards/") and path.endswith(".svg"))
 
 
 class PageLinks(HTMLParser):

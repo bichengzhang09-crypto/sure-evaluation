@@ -125,6 +125,8 @@ def test_english_page_and_readme_boundaries(facts, copy):
     assert "SURE / RELEASE BOARD" in output["README.md"]
     assert output["README.md"].count("Read detailed announcement") == 1
     assert "overflow-x:auto" in output["README.md"]
+    assert "docs/news/cards/ear-1.svg" in output["README.md"]
+    assert output["docs/news/cards/ear-1.svg"].startswith("<svg ")
     assert '<a id="ear-1">' in output["docs/news/index.md"]
 
 
@@ -150,6 +152,7 @@ def test_visual_page_builds_a_summary_card_for_each_active_entry(facts, copy):
 
 def test_visual_publication_only_allows_named_assets_and_checks_html_links(facts, copy):
     assert allowed("docs/news/index.html") and allowed("docs/news/banner.svg")
+    assert allowed("docs/news/cards/ear-1.svg")
     assert not allowed("docs/news/arbitrary.html")
     assert not allowed("docs/news/arbitrary.svg")
     assert not allowed("docs/news/tracking.js")

@@ -32,10 +32,60 @@ def outside_block(readme: str) -> str:
     return replace_block(readme, "")
 
 
+def _wrap(value: str, width: int) -> list[str]:
+    words = value.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if current and len(candidate) > width:
+            lines.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    return lines
+
+
+def readme_card_svg(entry: Entry, number: int) -> str:
+    """Render a self-contained visual card that GitHub README can display."""
+    title_lines = _wrap(entry.title, 27)[:2]
+    summary_lines = _wrap(entry.summary, 48)[:3]
+    tasks = " · ".join(task_label(task) for task in entry.support.tasks)
+    metrics = " · ".join(METRICS.get(metric, metric) for metric in entry.support.metrics)
+
+    def lines(values: list[str], x: int, y: int, size: int, fill: str,
+              weight: int = 400, step: int = 18) -> str:
+        return "".join(
+            f'<text x="{x}" y="{y + i * step}" fill="{fill}" font-size="{size}" '
+            f'font-weight="{weight}">{html.escape(value)}</text>'
+            for i, value in enumerate(values)
+        )
+
+    title = html.escape(entry.title, quote=True)
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="360" height="268" viewBox="0 0 360 268" role="img" aria-labelledby="title desc">
+<title id="title">{title}</title>
+<desc id="desc">{html.escape(entry.summary, quote=True)}</desc>
+<rect x="1" y="1" width="358" height="266" rx="18" fill="#ffffff" stroke="#dfe4ea" stroke-width="2"/>
+<rect x="20" y="0" width="48" height="5" rx="2.5" fill="#fab005"/>
+<rect x="22" y="22" width="34" height="34" rx="10" fill="#e7f3ff"/>
+<text x="39" y="45" text-anchor="middle" fill="#1864ab" font-family="Arial,sans-serif" font-size="13" font-weight="700">{number:02d}</text>
+<text x="70" y="38" fill="#69727d" font-family="Arial,sans-serif" font-size="11">{entry.published_at.strftime('%d %b %Y')}</text>
+<text x="326" y="43" text-anchor="end" fill="#228be6" font-family="Arial,sans-serif" font-size="22">↗</text>
+{lines(title_lines, 22, 91, 22, '#212529', 700, 24)}
+{lines(summary_lines, 22, 143, 12, '#69727d', 400, 17)}
+<rect x="22" y="202" width="142" height="24" rx="12" fill="#e7f3ff"/>
+<text x="34" y="218" fill="#1864ab" font-family="Arial,sans-serif" font-size="10" font-weight="700">{html.escape(tasks)}</text>
+<rect x="172" y="202" width="100" height="24" rx="12" fill="#fff3bf"/>
+<text x="184" y="218" fill="#9a6700" font-family="Arial,sans-serif" font-size="10" font-weight="700">{html.escape(metrics)}</text>
+<text x="22" y="248" fill="#9aa3ad" font-family="Arial,sans-serif" font-size="10">{len(entry.chain):02d} evaluation routes</text>
+<text x="326" y="248" text-anchor="end" fill="#228be6" font-family="Arial,sans-serif" font-size="11" font-weight="700">READ DETAILS →</text>
+</svg>'''
+
+
 def readme_card(entry: Entry, number: int, *, prefix: str) -> str:
-    """Render one GitHub-compatible card for the README release board."""
-    title = html.escape(entry.title)
-    summary = html.escape(entry.summary)
+    """Render one linked visual card for the README release board."""
     tasks = " · ".join(task_label(task) for task in entry.support.tasks)
     metrics = " · ".join(METRICS.get(metric, metric) for metric in entry.support.metrics)
     docs = " · ".join(
@@ -45,36 +95,29 @@ def readme_card(entry: Entry, number: int, *, prefix: str) -> str:
     )
     catalog = f'<a href="{html.escape(prefix + entry.links.catalog, quote=True)}">Catalog ↗</a>'
     source = f'<a href="{html.escape(entry.links.source_change, quote=True)}">Source ↗</a>'
-    return f'''<td valign="top" width="280">
-<table border="1" cellpadding="12" cellspacing="0" width="100%">
-<tr><td valign="top" bgcolor="#f8fafc">
-<p><sub><strong>{number:02d}</strong> &nbsp; {entry.published_at.strftime('%d %b %Y')}</sub></p>
-<h3>{title}</h3>
-<p>{summary}</p>
-<p><kbd>{html.escape(tasks)}</kbd> &nbsp; <kbd>{html.escape(metrics)}</kbd></p>
-<p><sub>{len(entry.chain):02d} evaluation routes</sub></p>
-<p>{docs}<br>{catalog} · {source}</p>
+    image = f'{prefix}docs/news/cards/{html.escape(entry.id, quote=True)}.svg'
+    alt = html.escape(f'{entry.title} · {tasks} · {metrics}', quote=True)
+    return f'''<td valign="top" width="360">
+<a href="#{html.escape(entry.id, quote=True)}"><img src="{image}" width="360" alt="{alt}"></a>
+<p><sub>{docs}<br>{catalog} · {source}</sub></p>
 <p><a href="#{html.escape(entry.id, quote=True)}"><strong>Read detailed announcement →</strong></a></p>
-</td></tr>
-</table>
 </td>'''
 
 
 def readme_board(entries: list[Entry], *, prefix: str) -> str:
     cards = "".join(readme_card(entry, i + 1, prefix=prefix)
                      for i, entry in enumerate(entries))
-    return f'''<table border="1" cellpadding="16" cellspacing="0" width="100%">
-<tr><td bgcolor="#f8fafc">
-<p><img src="{html.escape(prefix + 'docs/news/banner.svg', quote=True)}" alt="SURE evaluation release notes"></p>
+    return f'''<p><img src="{html.escape(prefix + 'docs/news/banner.svg', quote=True)}" alt="SURE evaluation release notes"></p>
+<blockquote>
 <p><sub>● &nbsp;● &nbsp;● &nbsp; SURE / RELEASE BOARD &nbsp;·&nbsp; VALIDATED UPDATES</sub></p>
 <h2>Recently supported</h2>
-<p>Scroll through the latest changes. Each card links to its detailed announcement, task guide, catalog, and source.</p>
+<p>Scroll through the visual cards. Each one opens its detailed announcement and linked evidence.</p>
+</blockquote>
 <div style="overflow-x:auto">
 <table border="0" cellpadding="4" cellspacing="0"><tr>{cards}</tr></table>
 </div>
 <p><sub>← Swipe or scroll the cards &nbsp;·&nbsp; <a href="{html.escape(prefix + 'docs/news/index.html', quote=True)}">Open the visual release board ↗</a></sub></p>
-</td></tr>
-</table>'''
+'''
 
 
 def section(entry: Entry, *, prefix: str, short: bool = False) -> str:
@@ -138,12 +181,15 @@ def render(entries: list[Entry], readme: str) -> dict[str, str]:
              "![SURE evaluation release notes](banner.svg)\n\n"
              "New evaluation capabilities, their exact pipelines, and the source behind each update.\n\n"
              "[Visual release notes](index.html) · [Latest updates](latest.md)\n\n")
+    cards = {f"docs/news/cards/{entry.id}.svg": readme_card_svg(entry, i + 1)
+             for i, entry in enumerate(latest)}
     return {
         "README.md": replace_block(readme, block),
         "docs/news/index.md": intro + "\n---\n\n".join(section(e, prefix="../../") for e in entries),
         "docs/news/latest.md": intro + "\n---\n\n".join(section(e, prefix="../../") for e in latest),
         "docs/news/index.html": render_page(entries),
         "docs/news/banner.svg": render_banner(latest),
+        **cards,
     }
 
 
