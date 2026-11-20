@@ -32,6 +32,51 @@ def outside_block(readme: str) -> str:
     return replace_block(readme, "")
 
 
+def readme_card(entry: Entry, number: int, *, prefix: str) -> str:
+    """Render one GitHub-compatible card for the README release board."""
+    title = html.escape(entry.title)
+    summary = html.escape(entry.summary)
+    tasks = " · ".join(task_label(task) for task in entry.support.tasks)
+    metrics = " · ".join(METRICS.get(metric, metric) for metric in entry.support.metrics)
+    docs = " · ".join(
+        f'<a href="{html.escape(prefix + path, quote=True)}">'
+        f'{html.escape(path.rsplit("/", 1)[-1][:-3])} ↗</a>'
+        for path in entry.links.docs
+    )
+    catalog = f'<a href="{html.escape(prefix + entry.links.catalog, quote=True)}">Catalog ↗</a>'
+    source = f'<a href="{html.escape(entry.links.source_change, quote=True)}">Source ↗</a>'
+    return f'''<td valign="top" width="280">
+<table border="1" cellpadding="12" cellspacing="0" width="100%">
+<tr><td valign="top" bgcolor="#f8fafc">
+<p><sub><strong>{number:02d}</strong> &nbsp; {entry.published_at.strftime('%d %b %Y')}</sub></p>
+<h3>{title}</h3>
+<p>{summary}</p>
+<p><kbd>{html.escape(tasks)}</kbd> &nbsp; <kbd>{html.escape(metrics)}</kbd></p>
+<p><sub>{len(entry.chain):02d} evaluation routes</sub></p>
+<p>{docs}<br>{catalog} · {source}</p>
+<p><a href="#{html.escape(entry.id, quote=True)}"><strong>Read detailed announcement →</strong></a></p>
+</td></tr>
+</table>
+</td>'''
+
+
+def readme_board(entries: list[Entry], *, prefix: str) -> str:
+    cards = "".join(readme_card(entry, i + 1, prefix=prefix)
+                     for i, entry in enumerate(entries))
+    return f'''<table border="1" cellpadding="16" cellspacing="0" width="100%">
+<tr><td bgcolor="#f8fafc">
+<p><img src="{html.escape(prefix + 'docs/news/banner.svg', quote=True)}" alt="SURE evaluation release notes"></p>
+<p><sub>● &nbsp;● &nbsp;● &nbsp; SURE / RELEASE BOARD &nbsp;·&nbsp; VALIDATED UPDATES</sub></p>
+<h2>Recently supported</h2>
+<p>Scroll through the latest changes. Each card links to its detailed announcement, task guide, catalog, and source.</p>
+<div style="overflow-x:auto">
+<table border="0" cellpadding="4" cellspacing="0"><tr>{cards}</tr></table>
+</div>
+<p><sub>← Swipe or scroll the cards &nbsp;·&nbsp; <a href="{html.escape(prefix + 'docs/news/index.html', quote=True)}">Open the visual release board ↗</a></sub></p>
+</td></tr>
+</table>'''
+
+
 def section(entry: Entry, *, prefix: str, short: bool = False) -> str:
     title = text(entry.title)
     lines = [f"<a id=\"{entry.id}\"></a>", "",
@@ -86,9 +131,8 @@ def render(entries: list[Entry], readme: str) -> dict[str, str]:
     entries = sorted(entries, key=lambda e: (e.published_at, e.id), reverse=True)
     superseded = {e.supersedes for e in entries if e.supersedes}
     latest = [e for e in entries if e.id not in superseded][:3]
-    block = (GENERATED + "\n\n![SURE evaluation release notes](./docs/news/banner.svg)\n\n"
-             "## Recently supported\n\n") + "\n".join(
-        section(e, prefix="./", short=True) for e in latest)
+    block = GENERATED + "\n\n" + readme_board(latest, prefix="./") + "\n\n"
+    block += "\n".join(section(e, prefix="./", short=True) for e in latest)
     block += "\n[Full history](./docs/news/index.md) · [Visual release notes](./docs/news/index.html)\n"
     intro = ("# Release notes\n\n" + GENERATED + "\n\n"
              "![SURE evaluation release notes](banner.svg)\n\n"

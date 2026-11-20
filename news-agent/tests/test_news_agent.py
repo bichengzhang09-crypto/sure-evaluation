@@ -122,6 +122,9 @@ def test_english_page_and_readme_boundaries(facts, copy):
     assert outside_block(readme) == outside_block(output["README.md"])
     assert all(pipeline_id in output["README.md"] for pipeline_id in IDS)
     assert "report.json" in output["README.md"]
+    assert "SURE / RELEASE BOARD" in output["README.md"]
+    assert output["README.md"].count("Read detailed announcement") == 1
+    assert "overflow-x:auto" in output["README.md"]
     assert '<a id="ear-1">' in output["docs/news/index.md"]
 
 
