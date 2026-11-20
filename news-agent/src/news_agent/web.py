@@ -60,6 +60,23 @@ def route_card(entry: Entry, chain, number: int) -> str:
     </section>'''
 
 
+def summary_card(entry: Entry, number: int) -> str:
+    """Render one compact, scrollable board card for an announcement."""
+    tasks = " ".join(task_label(task) for task in entry.support.tasks)
+    metrics = " · ".join(METRICS.get(metric, metric) for metric in entry.support.metrics)
+    searchable = escape(" ".join([entry.title, entry.summary, tasks, metrics]), quote=True)
+    return f'''<a class="update-card" href="#{escape(entry.id, quote=True)}"
+      data-search="{searchable}" aria-label="Read full announcement: {escape(entry.title, quote=True)}">
+      <div class="update-card-top"><span class="update-number">{number:02d}</span>
+      <time datetime="{entry.published_at}">{entry.published_at.strftime('%d %b %Y')}</time>
+      <span class="update-arrow" aria-hidden="true">↗</span></div>
+      <h3>{escape(entry.title)}</h3>
+      <p>{escape(entry.summary)}</p>
+      <div class="update-tags"><span>{escape(tasks)}</span><span>{escape(metrics)}</span></div>
+      <span class="update-card-link">Read full announcement <b aria-hidden="true">→</b></span>
+    </a>'''
+
+
 def article(entry: Entry, superseded: bool) -> str:
     routes = "".join(route_card(entry, chain, i + 1) for i, chain in enumerate(entry.chain))
     docs = "".join(link(task_label(path.rsplit("/", 1)[-1][:-3]), source_link(entry, path), "resource-link")
@@ -70,13 +87,15 @@ def article(entry: Entry, superseded: bool) -> str:
     revised = '<span class="revision-badge">Earlier revision</span>' if superseded else ""
     searchable = escape(" ".join([entry.title, entry.summary, *entry.support.tasks,
                                   *entry.support.metrics, *entry.support.pipeline_ids]), quote=True)
-    return f'''<article class="release" id="{entry.id}" data-search="{searchable}"
+    return f'''<article class="release" id="{escape(entry.id, quote=True)}" data-search="{searchable}"
       data-tasks="{escape(' '.join(entry.support.tasks), quote=True)}">
-      <div class="release-date"><span class="timeline-dot"></span><time datetime="{entry.published_at}">
-      <strong>{entry.published_at.strftime('%d %b')}</strong><span>{entry.published_at.year}</span></time>
-      <span class="release-type">Capability update</span></div>
+      <div class="release-marker"><span class="release-number">{entry.published_at.strftime('%m')}</span>
+      <span class="release-line" aria-hidden="true"></span><time datetime="{entry.published_at}">
+      <strong>{entry.published_at.strftime('%d %b')}</strong><small>{entry.published_at.year}</small></time>
+      <span class="release-type">SUPPORTED</span></div>
       <div class="release-content"><div class="release-kicker"><span class="status"><i></i> Supported</span>
-      <span class="release-ref">{len(entry.chain):02d} evaluation routes</span>{revised}</div>
+      <span class="release-ref">{len(entry.chain):02d} evaluation routes</span>{revised}
+      <a class="back-to-board" href="#board">Back to board ↑</a></div>
       <h2>{escape(entry.title)}</h2><p class="release-summary">{escape(entry.summary)}</p>
       <div class="routes">{routes}</div>
       <div class="run-note"><span class="note-icon" aria-hidden="true">i</span>
@@ -100,13 +119,15 @@ def render_page(entries: list[Entry]) -> str:
                   if latest else "https://github.com/PigeonDan1/sure-evaluation")
     chips = "".join(f'<button type="button" class="filter" data-task="{escape(task)}">'
                     f'{escape(task_label(task))}</button>' for task in tasks)
+    cards = "".join(summary_card(entry, i + 1) for i, entry in enumerate(active))
     content = "".join(article(e, e.id in superseded) for e in entries)
     template = files("news_agent").joinpath("templates/news.html").read_text(encoding="utf-8")
     replacements = {
         "{{REPOSITORY}}": escape(repository, quote=True),
         "{{DATE}}": latest.published_at.strftime("%d %b %Y") if latest else "No updates yet",
-        "{{COUNT}}": str(len(entries)), "{{ROUTES}}": str(len(pipelines)),
-        "{{TASKS}}": str(len(tasks)), "{{FILTERS}}": chips, "{{CONTENT}}": content,
+        "{{COUNT}}": str(len(active)), "{{ROUTES}}": str(len(pipelines)),
+        "{{TASKS}}": str(len(tasks)), "{{FILTERS}}": chips, "{{CARDS}}": cards,
+        "{{CONTENT}}": content,
     }
     for token, value in replacements.items():
         template = template.replace(token, value)

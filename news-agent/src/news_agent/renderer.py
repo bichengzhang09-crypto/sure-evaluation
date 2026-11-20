@@ -55,8 +55,14 @@ def section(entry: Entry, *, prefix: str, short: bool = False) -> str:
         lines += ["> **Before you run**", ">", "> " + text(entry.limitations), ""]
     docs = " · ".join(f"[{path.split('/')[-1][:-3]}]({prefix}{path})"
                       for path in entry.links.docs)
-    tests = " · ".join(f"[{path.split('/')[-1]}]({prefix}{path})"
-                       for path in entry.links.tests)
+    # Evidence tests are pinned to the source commit.  They may not exist in
+    # the checkout used to render a preview (for example, a fork can lag the
+    # source branch), so keep these links anchored to the verified commit.
+    repository = entry.links.source_change.rsplit("/commit/", 1)[0]
+    tests = " · ".join(
+        f"[{path.split('/')[-1]}]({repository}/blob/{entry.evidence.source_commit}/{path})"
+        for path in entry.links.tests
+    )
     history = "index.md"
     full = f"{prefix}docs/news/{history}#{entry.id}"
     lines += [f"[Full announcement]({full}) · Task docs: {docs} · "

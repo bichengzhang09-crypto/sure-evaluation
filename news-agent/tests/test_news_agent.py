@@ -136,6 +136,15 @@ def test_visual_page_escapes_source_labels_and_links(facts, copy):
     assert all(pid in output for pid in IDS)
 
 
+def test_visual_page_builds_a_summary_card_for_each_active_entry(facts, copy):
+    entry = entry_for(facts, copy)
+    page = render_page([entry])
+    assert page.count('class="update-card"') == 1
+    assert f'href="#{entry.id}"' in page
+    assert "Read full announcement" in page
+    assert "Announcement board" in page
+
+
 def test_visual_publication_only_allows_named_assets_and_checks_html_links(facts, copy):
     assert allowed("docs/news/index.html") and allowed("docs/news/banner.svg")
     assert not allowed("docs/news/arbitrary.html")
