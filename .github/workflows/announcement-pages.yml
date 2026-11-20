@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feat/news-agent
   workflow_dispatch:
 
 permissions:
