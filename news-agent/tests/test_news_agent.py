@@ -146,6 +146,7 @@ def test_visual_page_keeps_hero_timeline_and_language_switch(facts, copy):
     assert entry.links.source_change in output
     assert '<div class="language-switch"' in output
     assert 'data-language="en"' in output and 'data-language="zh"' in output
+    assert 'data-zh="EAR-1 挑战赛评分支持"' in output
 
 
 def test_visual_publication_only_allows_named_assets_and_checks_html_links(facts, copy):

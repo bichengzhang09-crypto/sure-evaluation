@@ -7,6 +7,39 @@ from .contract import Entry
 
 TASK_NAMES = {"sd": "Speaker diarization", "sa_asr": "Speaker-attributed ASR"}
 METRICS = {"der": "DER", "cpcer": "cpCER"}
+ZH_COPY = {
+    "ear-1-scoring": {
+        "title": "EAR-1 挑战赛评分支持",
+        "summary": "支持使用 DER 评测说话人分离，以及使用 cpCER 评测中文说话人归属 ASR。",
+        "brief": "SD → 提交转换 → DER\nSA-ASR → 转换 → EAR-1 规范化 → cpCER",
+        "limitations": "使用组织方评分器，需要安装 SciPy，并提供包含 D1 或 R1 赛道的 sessions.json。",
+    },
+    "fd-bench": {
+        "title": "FD-Bench 全双工对话时序",
+        "summary": "测量系统开始说话、提前回复和打断用户的时间表现。",
+        "brief": "语音区间 → 全双工时间线 → IRD、FSED、ERT、EIT",
+        "limitations": "提供用户和系统语音区间，并使用一致的时间起点。",
+    },
+    "slu-judge": {
+        "title": "SLU 答案质量评测",
+        "summary": "依据自定义评分标准，在 0 到 100 分范围内评估口语语言理解答案。",
+        "brief": "答案 + 评分标准 → LLM 评测 → 平均分",
+        "limitations": "需要提供答案、提示、评分标准和已配置的评测模型，分数取决于评分标准。",
+    },
+    "etc-bench": {
+        "title": "ETC-Bench 转写规范化",
+        "summary": "在 ASR 对比前，对 12 种语言中的等价书写形式进行统一规范化。",
+        "brief": "参考文本 + 识别结果 → ETC 规范化 → WeNet CER 或 WER",
+        "limitations": "需要提供 ETC 模型。阿拉伯语、日语和中文使用 CER，其余语言使用 WER。",
+    },
+    "openbench-se": {
+        "title": "OpenBench 语音增强评测",
+        "summary": "使用可选指标评测增强语音的可懂度、频谱失真和预测质量。",
+        "brief": "增强音频（必要时附参考音频） → 指标评分 → 语料库均值",
+        "limitations": "参考音频指标需要对齐的干净音频，学习型质量估计取决于所选模型。",
+    },
+}
+ZH_COPY["ear-1"] = ZH_COPY["ear-1-scoring"]
 
 
 def task_label(task: str) -> str:
@@ -46,7 +79,18 @@ def pipeline_brief(entry: Entry) -> str:
     return "\n".join(paths)
 
 
+def localized_copy(entry: Entry) -> dict[str, str]:
+    return {
+        "title": entry.title,
+        "summary": entry.summary,
+        "brief": pipeline_brief(entry),
+        "limitations": entry.limitations,
+        **ZH_COPY.get(entry.id, {}),
+    }
+
+
 def article(entry: Entry, previous: list[Entry]) -> str:
+    copy = localized_copy(entry)
     aliases = "".join(f'<span id="{e.id}"></span>' for e in previous)
     rows = []
     for number, chain in enumerate(entry.chain, 1):
@@ -73,10 +117,10 @@ def article(entry: Entry, previous: list[Entry]) -> str:
       <a class="release-type" href="{escape(commit, quote=True)}">Commit {entry.evidence.source_commit[:7]} ↗</a></div>
       <div class="release-content"><div class="release-kicker"><span class="status"><i></i> <span data-i18n="supported">Supported</span></span>
       <span class="release-ref">{label} · {count:02d} {'pipeline' if count == 1 else 'pipelines'}</span></div>
-      <h2>{escape(entry.title)}</h2><p class="release-summary">{escape(entry.summary)}</p>
-      <p class="flow">{escape(pipeline_brief(entry))}</p>
+      <h2 class="entry-title" data-entry-i18n="title" data-en="{escape(entry.title, quote=True)}" data-zh="{escape(copy['title'], quote=True)}">{escape(entry.title)}</h2><p class="release-summary entry-summary" data-entry-i18n="summary" data-en="{escape(entry.summary, quote=True)}" data-zh="{escape(copy['summary'], quote=True)}">{escape(entry.summary)}</p>
+      <p class="flow entry-brief" data-entry-i18n="brief" data-en="{escape(pipeline_brief(entry), quote=True)}" data-zh="{escape(copy['brief'], quote=True)}">{escape(pipeline_brief(entry))}</p>
       <details><summary>{count} <span class="pipeline-word" data-en="{'pipeline' if count == 1 else 'pipelines'}" data-zh="{'条流水线' if count != 1 else '条流水线'}">{'pipeline' if count == 1 else 'pipelines'}</span></summary>
-      <p class="release-summary"><strong data-i18n="beforeRun">Before you run</strong><br>{escape(entry.limitations)}</p><ul>{''.join(rows)}</ul>
+      <p class="release-summary"><strong data-i18n="beforeRun">Before you run</strong><br><span class="entry-limitation" data-entry-i18n="limitations" data-en="{escape(entry.limitations, quote=True)}" data-zh="{escape(copy['limitations'], quote=True)}">{escape(entry.limitations)}</span></p><ul>{''.join(rows)}</ul>
       <p class="sources"><span data-i18n="taskDocumentation">Task documentation</span> &nbsp; {docs}</p>
       {f'<p class="sources"><span data-i18n="tests">Tests</span> &nbsp; {tests}</p>' if tests else ''}</details>
       </div></article>'''
