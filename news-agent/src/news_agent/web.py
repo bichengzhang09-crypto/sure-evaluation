@@ -34,6 +34,10 @@ def link(label: str, url: str, css: str = "") -> str:
     return f'<a class="{css}" href="{escape(url, quote=True)}">{escape(label)} ↗</a>'
 
 
+def route_anchor(entry: Entry, number: int) -> str:
+    return f"{entry.id}-route-{number}"
+
+
 def route_card(entry: Entry, chain, number: int) -> str:
     metric = METRICS.get(chain.metric, chain.metric)
     language = "Language independent" if chain.language == "n/a" else chain.language.upper()
@@ -47,7 +51,7 @@ def route_card(entry: Entry, chain, number: int) -> str:
         )
     steps.append('<li class="step output"><span class="step-dot"></span>'
                  '<span>report.json</span><small>output</small></li>')
-    return f'''<section class="route-card" aria-label="{escape(task_label(chain.task))} route">
+    return f'''<section class="route-card" id="{route_anchor(entry, number)}" aria-label="{escape(task_label(chain.task))} route">
       <div class="route-heading"><div class="route-name"><span class="route-number">{number:02d}</span>
       <div><h4>{escape(TASK_NAMES.get(chain.task, task_label(chain.task)))}</h4>
       <p>{escape(task_label(chain.task))} <span>·</span> {escape(language)}</p></div></div>

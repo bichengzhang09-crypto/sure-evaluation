@@ -120,8 +120,12 @@ def test_english_page_and_readme_boundaries(facts, copy):
     output = render([entry], readme)
     validate_output({"README.md": readme}, output, lambda p: (ROOT / p).is_file())
     assert outside_block(readme) == outside_block(output["README.md"])
-    assert all(pipeline_id in output["README.md"] for pipeline_id in IDS)
-    assert "report.json" in output["README.md"]
+    strip = output["README.md"].split("<pre>", 1)[1].split("</pre>", 1)[0]
+    assert strip.count("<a href=") == strip.count("<img ") == 3
+    for card in ("ear-1", "ear-1-route-1", "ear-1-route-2"):
+        assert f'#{card}"><img src="./docs/news/cards/{card}.svg"' in strip
+        assert f'id="{card}"' in output["docs/news/index.html"]
+    assert all(pipeline_id in output["docs/news/index.md"] for pipeline_id in IDS)
     assert '<a id="ear-1">' in output["docs/news/index.md"]
 
 
@@ -250,7 +254,8 @@ def test_only_three_recent_entries_are_in_readme(facts, copy):
     for i, entry in enumerate(entries):
         entry.id = f"entry-{i}"
     output = render(entries, START + "\n" + END)
-    assert output["README.md"].count('<a id="') == 3
+    for i in range(5):
+        assert (f'#entry-{i}">' in output["README.md"]) == (i >= 2)
     assert output["docs/news/index.md"].count('<a id="') == 5
 
 
@@ -434,8 +439,8 @@ def test_revision_keeps_history_and_hides_old_entry_from_readme(facts, copy):
     revision = original.model_copy(deep=True)
     revision.id, revision.revision, revision.supersedes = "ear-1-revision-2", 2, "ear-1"
     output = render([original, revision], START + "\n" + END)
-    assert 'id="ear-1"' not in output["README.md"]
-    assert 'id="ear-1-revision-2"' in output["README.md"]
+    assert '#ear-1">' not in output["README.md"]
+    assert '#ear-1-revision-2">' in output["README.md"]
     assert 'id="ear-1"' in output["docs/news/index.md"]
 
 

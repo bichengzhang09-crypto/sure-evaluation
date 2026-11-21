@@ -14,11 +14,14 @@ from urllib.parse import unquote, urlsplit
 
 from .config import Config
 from .git import Snapshot, git, safe_path
+from .readme_cards import PAGES
 from .renderer import END, START, diff, outside_block
 
 
 def allowed(path: str) -> bool:
     safe_path(path)
+    if re.fullmatch(r"docs/news/cards/[a-z0-9]+(?:-[a-z0-9]+)*\.svg", path):
+        return True
     return path in {"README.md", "NEWS.md", "docs/news/index.html", "docs/news/banner.svg"} or (
         path.startswith("docs/news/") and path.endswith((".md", ".yaml")))
 
@@ -58,6 +61,13 @@ def validate_output(before: dict[str, str], after: dict[str, str], exists) -> No
         targets = page.targets + re.findall(r"\]\(([^\s)]+)\)", checked)
         for target in targets:
             parts = urlsplit(target)
+            if parts._replace(fragment="").geturl() == PAGES:
+                if parts.fragment:
+                    anchors = PageLinks()
+                    anchors.feed(after["docs/news/index.html"])
+                    if parts.fragment not in anchors.ids:
+                        raise ValueError(f"Broken announcement anchor: {target}")
+                continue
             if parts.scheme:
                 if parts.scheme != "https" or parts.netloc != "github.com":
                     raise ValueError(f"Unexpected external announcement link: {target}")

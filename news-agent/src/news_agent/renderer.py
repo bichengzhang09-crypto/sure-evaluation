@@ -7,7 +7,8 @@ import html
 import re
 
 from .contract import Entry
-from .web import METRICS, node_label, render_banner, render_page, task_label
+from .readme_cards import readme_board
+from .web import METRICS, node_label, render_banner, render_page, source_link, task_label
 
 START = "<!-- SURE-NEWS:START -->"
 END = "<!-- SURE-NEWS:END -->"
@@ -55,7 +56,7 @@ def section(entry: Entry, *, prefix: str, short: bool = False) -> str:
         lines += ["> **Before you run**", ">", "> " + text(entry.limitations), ""]
     docs = " · ".join(f"[{path.split('/')[-1][:-3]}]({prefix}{path})"
                       for path in entry.links.docs)
-    tests = " · ".join(f"[{path.split('/')[-1]}]({prefix}{path})"
+    tests = " · ".join(f"[{path.split('/')[-1]}]({source_link(entry, path)})"
                        for path in entry.links.tests)
     history = "index.md"
     full = f"{prefix}docs/news/{history}#{entry.id}"
@@ -80,16 +81,14 @@ def render(entries: list[Entry], readme: str) -> dict[str, str]:
     entries = sorted(entries, key=lambda e: (e.published_at, e.id), reverse=True)
     superseded = {e.supersedes for e in entries if e.supersedes}
     latest = [e for e in entries if e.id not in superseded][:3]
-    block = (GENERATED + "\n\n![SURE evaluation release notes](./docs/news/banner.svg)\n\n"
-             "## Recently supported\n\n") + "\n".join(
-        section(e, prefix="./", short=True) for e in latest)
-    block += "\n[Full history](./docs/news/index.md) · [Visual release notes](./docs/news/index.html)\n"
+    board, assets = readme_board(latest)
     intro = ("# Release notes\n\n" + GENERATED + "\n\n"
              "![SURE evaluation release notes](banner.svg)\n\n"
              "New evaluation capabilities, their exact pipelines, and the source behind each update.\n\n"
              "[Visual release notes](index.html) · [Latest updates](latest.md)\n\n")
     return {
-        "README.md": replace_block(readme, block),
+        **assets,
+        "README.md": replace_block(readme, GENERATED + "\n\n" + board),
         "docs/news/index.md": intro + "\n---\n\n".join(section(e, prefix="../../") for e in entries),
         "docs/news/latest.md": intro + "\n---\n\n".join(section(e, prefix="../../") for e in latest),
         "docs/news/index.html": render_page(entries),

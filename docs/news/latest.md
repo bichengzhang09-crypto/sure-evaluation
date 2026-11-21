@@ -53,7 +53,7 @@ sa_asr.zh.cpcer.conversion_sa_asr_ear1_submission_v1.ear1_norm_v1.ear1_scorer_v1
 
 Local validation on 2026-11-18 against 3853dab1db5d7d44691b25a6620932742a1c0a50: python -m pytest tests/test\_ear1\_routes.py -q; 13 passed. Both SD/DER and SA-ASR/cpCER match the organizer fixture outputs. Copy manually prepared; no model call.
 
-[test_ear1_routes.py](../../tests/test_ear1_routes.py) · [expected.json](../../tests/fixtures/ear1/esd/expected.json) · [expected.json](../../tests/fixtures/ear1/esr/expected.json)
+[test_ear1_routes.py](https://github.com/PigeonDan1/sure-evaluation/blob/3853dab1db5d7d44691b25a6620932742a1c0a50/tests/test_ear1_routes.py) · [expected.json](https://github.com/PigeonDan1/sure-evaluation/blob/3853dab1db5d7d44691b25a6620932742a1c0a50/tests/fixtures/ear1/esd/expected.json) · [expected.json](https://github.com/PigeonDan1/sure-evaluation/blob/3853dab1db5d7d44691b25a6620932742a1c0a50/tests/fixtures/ear1/esr/expected.json)
 
 [Source 1](https://github.com/PigeonDan1/sure-evaluation/commit/c1bc96cf865baef07e37f702a8286d3a6c68a5a2)
 
