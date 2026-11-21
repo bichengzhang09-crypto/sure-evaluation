@@ -54,14 +54,14 @@ def section(entry: Entry, *, prefix: str, short: bool = False) -> str:
     lines += ["</details>", ""]
     if not short:
         lines += ["> **Before you run**", ">", "> " + text(entry.limitations), ""]
-    docs = " · ".join(f"[{path.split('/')[-1][:-3]}]({prefix}{path})"
+    docs = " · ".join(f"[{path.split('/')[-1][:-3]}]({source_link(entry, path)})"
                       for path in entry.links.docs)
     tests = " · ".join(f"[{path.split('/')[-1]}]({source_link(entry, path)})"
                        for path in entry.links.tests)
     history = "index.md"
     full = f"{prefix}docs/news/{history}#{entry.id}"
     lines += [f"[Full announcement]({full}) · Task docs: {docs} · "
-              f"[Catalog]({prefix}{entry.links.catalog}) · "
+              f"[Catalog]({source_link(entry, entry.links.catalog)}) · "
               f"[Source change]({entry.links.source_change})"]
     if not short:
         lines += ["", "<details>", "<summary>Source &amp; validation</summary>", "",
@@ -73,14 +73,14 @@ def section(entry: Entry, *, prefix: str, short: bool = False) -> str:
                                      for i, url in enumerate(entry.links.related_changes))]
         lines += ["", "</details>", ""]
     if entry.supersedes and not short:
-        lines += ["", f"Revision {entry.revision}; supersedes [{entry.supersedes}](#{entry.supersedes})."]
+        lines += ["", f"Revision {entry.revision} of [{entry.supersedes}](index.md#{entry.supersedes})."]
     return "\n".join(lines) + "\n"
 
 
 def render(entries: list[Entry], readme: str) -> dict[str, str]:
     entries = sorted(entries, key=lambda e: (e.published_at, e.id), reverse=True)
     superseded = {e.supersedes for e in entries if e.supersedes}
-    latest = [e for e in entries if e.id not in superseded][:3]
+    latest = [e for e in entries if e.id not in superseded][:5]
     board, assets = readme_board(latest)
     intro = ("# Release notes\n\n" + GENERATED + "\n\n"
              "![SURE evaluation release notes](banner.svg)\n\n"

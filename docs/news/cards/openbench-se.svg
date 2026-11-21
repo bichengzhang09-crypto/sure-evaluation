@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="398" height="264" viewBox="0 0 398 264">
+  <title>OpenBench speech enhancement</title>
+  <defs><linearGradient id="wash" x2="1" y2="1"><stop stop-color="#edf8f6"/><stop offset="1" stop-color="#d8edf1"/></linearGradient></defs>
+  <rect width="398" height="264" fill="#fff"/>
+  <rect x="7" y="8" width="384" height="248" rx="22" fill="url(#wash)" stroke="#bad8df"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#315e68">
+    <text font-size="12" font-weight="700"><tspan x="26" y="37">SE</tspan></text>
+    <text x="369" y="37" text-anchor="end" font-size="12">02 Nov 2026</text>
+    <text font-size="22" font-weight="700"><tspan x="26" y="71">OpenBench speech enhancement</tspan></text>
+    <text font-size="14"><tspan x="26" y="119">Score intelligibility, spectral distortion and</tspan><tspan x="26" y="137">predicted speech quality with opt-in metrics.</tspan></text>
+    <path d="M26 169h346" stroke="#bad8df"/>
+    <text font-size="13" font-weight="600"><tspan x="26" y="189">Enhanced audio (+ reference as needed) →</tspan><tspan x="26" y="205">metric scorer → corpus mean</tspan></text>
+    <text x="26" y="241" font-size="12" font-weight="700">View commit ↗</text>
+    <text x="369" y="241" text-anchor="end" font-size="12" font-family="monospace">204ffe8</text>
+  </g>
+</svg>

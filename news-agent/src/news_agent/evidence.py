@@ -31,7 +31,8 @@ def extract(snapshot: Snapshot, pipeline_ids: list[str]) -> dict:
     files = {CATALOG: snapshot.read(CATALOG)}
 
     def load(path: str) -> dict:
-        files[path] = snapshot.read(path)
+        if path not in files:
+            files[path] = snapshot.read(path)
         return yaml.safe_load(files[path])
 
     chains = []
@@ -70,10 +71,12 @@ def extract(snapshot: Snapshot, pipeline_ids: list[str]) -> dict:
         for node_id in nodes:
             prefix = "conversion" if node_id.startswith("conversion/") else "nodes"
             suffix = node_id.split("/", 1)[1] if prefix == "conversion" else node_id
+            if node_id in {"scoring/wenet_cer", "scoring/wenet_mer"}:
+                suffix = "scoring/wenet_wer"
             path = f"src/sure_eval/evaluation/{prefix}/{suffix}/manifest.yaml"
             manifest = load(path)
             expected_id = suffix if prefix == "conversion" else node_id
-            if manifest["id"] != expected_id or not manifest.get("version"):
+            if expected_id not in (manifest["id"], *manifest.get("aliases", [])) or not manifest.get("version"):
                 raise ValueError(f"Invalid node identity: {node_id}")
             versions.append({"id": node_id, "version": str(manifest["version"])})
         doc = f"docs/tasks/{task}.md"

@@ -16,7 +16,7 @@ from news_agent import MODEL
 from news_agent.cli import prepare, run_cycle
 from news_agent.config import Config, load_config
 from news_agent.contract import Copy, Entry, load_entries, make_entry, validate_entry
-from news_agent.detector import detect
+from news_agent.detector import detect, feature_changes
 from news_agent.evidence import extract
 from news_agent.git import Snapshot, git
 from news_agent.kimi_client import KimiClient, read_stream
@@ -121,10 +121,8 @@ def test_english_page_and_readme_boundaries(facts, copy):
     validate_output({"README.md": readme}, output, lambda p: (ROOT / p).is_file())
     assert outside_block(readme) == outside_block(output["README.md"])
     strip = output["README.md"].split("<pre>", 1)[1].split("</pre>", 1)[0]
-    assert strip.count("<a href=") == strip.count("<img ") == 3
-    for card in ("ear-1", "ear-1-route-1", "ear-1-route-2"):
-        assert f'#{card}"><img src="./docs/news/cards/{card}.svg"' in strip
-        assert f'id="{card}"' in output["docs/news/index.html"]
+    assert strip.count("<a href=") == strip.count("<img ") == 1
+    assert f'{entry.links.source_change}"><img src="./docs/news/cards/ear-1.svg"' in strip
     assert all(pipeline_id in output["docs/news/index.md"] for pipeline_id in IDS)
     assert '<a id="ear-1">' in output["docs/news/index.md"]
 
@@ -210,7 +208,7 @@ def test_dry_run_can_use_unmerged_templates_with_committed_pipeline_facts(
     result = run_cycle(config, since=base)
     assert result["completed"][0]["status"] == "preview"
     assert len(calls) == 1
-    assert calls[0]["source_commit"] == original_head.strip()
+    assert calls[0]["source_commit"] == git(root, "rev-parse", "HEAD^1").strip()
     assert readme.read_text() == template
     assert git(root, "rev-parse", "HEAD") == original_head
     run_cycle(config)
@@ -242,21 +240,25 @@ def test_symlink_output_and_source_are_rejected(tmp_path, repository):
 
 def test_manual_entries_and_generated_pages_are_current():
     entries = load_entries(ROOT, "PigeonDan1/sure-evaluation")
-    assert entries[0].id == "ear-1"
-    assert entries[0].evidence.copy_origin == "manual"
-    assert entries[0].links.related_changes
+    assert {"ear-1", "ear-1-scoring", "etc-bench", "fd-bench", "slu-judge", "openbench-se"} <= {e.id for e in entries}
     before, output = prepare(ROOT, "PigeonDan1/sure-evaluation")
     assert all(before[p] == content for p, content in output.items())
 
 
-def test_only_three_recent_entries_are_in_readme(facts, copy):
-    entries = [entry_for(facts, copy) for _ in range(5)]
+def test_only_five_recent_entries_are_in_readme(facts, copy):
+    entries = [entry_for(facts, copy) for _ in range(7)]
     for i, entry in enumerate(entries):
         entry.id = f"entry-{i}"
     output = render(entries, START + "\n" + END)
-    for i in range(5):
-        assert (f'#entry-{i}">' in output["README.md"]) == (i >= 2)
-    assert output["docs/news/index.md"].count('<a id="') == 5
+    for i in range(7):
+        assert (f'cards/entry-{i}.svg' in output["README.md"]) == (i >= 2)
+    assert output["docs/news/index.md"].count('<a id="') == 7
+
+
+def test_one_poll_attributes_distinct_features_to_their_own_merges():
+    changes = list(feature_changes(Snapshot(ROOT, "abfdd68"), Snapshot(ROOT, "549eb71"), set()))
+    assert [item["source_commit"][:7] for item in changes] == ["137fbcc", "549eb71"]
+    assert [len(item["chains"]) for item in changes] == [1, 4]
 
 
 def test_discovery_ignores_docs_only_commits_and_does_not_call_kimi(repository, monkeypatch):
@@ -439,8 +441,10 @@ def test_revision_keeps_history_and_hides_old_entry_from_readme(facts, copy):
     revision = original.model_copy(deep=True)
     revision.id, revision.revision, revision.supersedes = "ear-1-revision-2", 2, "ear-1"
     output = render([original, revision], START + "\n" + END)
-    assert '#ear-1">' not in output["README.md"]
-    assert '#ear-1-revision-2">' in output["README.md"]
+    assert 'cards/ear-1.svg' not in output["README.md"]
+    assert 'cards/ear-1-revision-2.svg' in output["README.md"]
+    assert output["docs/news/index.html"].count('<article class="release"') == 1
+    assert 'id="ear-1-route-1"' in output["docs/news/index.html"]
     assert 'id="ear-1"' in output["docs/news/index.md"]
 
 

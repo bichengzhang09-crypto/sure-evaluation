@@ -12,7 +12,7 @@ import yaml
 from . import MODEL, PROMPT_VERSION
 from .config import load_config
 from .contract import Copy, Entry, load_entries, make_entry, validate_entry
-from .detector import detect
+from .detector import feature_changes
 from .git import Snapshot, git
 from .kimi_client import KimiClient
 from .publisher import local_write, preview, publish, validate_output
@@ -96,21 +96,16 @@ def run_cycle(config, *, since: str | None = None, copy_file: Path | None = None
                 # Retain the explicit starting point if the first backfill fails,
                 # so an ordinary next run retries rather than initializing ahead.
                 state.advance(scope, Snapshot(config.checkout, since).sha)
-            frozen = detect(Snapshot(config.checkout, cursor), head)
-            if frozen:
+            base = Snapshot(config.checkout, cursor)
+            if base.sha != head.sha:
                 entries = (load_entries(config.checkout, config.repository)
                            if config.preview_from_working_tree else
                            committed_entries(config.checkout, head, config.repository))
                 announced = {p for entry in entries
                              for p in entry.support.pipeline_ids}
                 announced.update(state.queued_pipeline_ids(scope))
-                remaining = [c["pipeline_id"] for c in frozen["chains"]
-                             if c["pipeline_id"] not in announced]
-                if remaining:
+                for frozen in feature_changes(base, head, announced):
                     from importlib.resources import files
-                    from .evidence import extract
-                    selected = extract(head, remaining)
-                    frozen.update(selected)
                     frozen["prompt"] = files("news_agent").joinpath(
                         f"prompts/{PROMPT_VERSION}.md").read_text(encoding="utf-8")
                     key = job_key(config.repository, config.base_branch, frozen)

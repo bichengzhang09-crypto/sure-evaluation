@@ -72,6 +72,7 @@ class Evidence(Strict):
 
 
 class Entry(Copy):
+    pipeline_brief: Text | None = None
     id: Annotated[str, Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")]
     revision: Annotated[int, Field(ge=1)] = 1
     supersedes: str | None = None

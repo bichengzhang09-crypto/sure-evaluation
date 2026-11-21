@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="398" height="264" viewBox="0 0 398 264">
+  <title>EAR-1 challenge scoring</title>
+  <defs><linearGradient id="wash" x2="1" y2="1"><stop stop-color="#eff9e7"/><stop offset="1" stop-color="#d9f1e8"/></linearGradient></defs>
+  <rect width="398" height="264" fill="#fff"/>
+  <rect x="7" y="8" width="384" height="248" rx="22" fill="url(#wash)" stroke="#b7d9c5"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#22594a">
+    <text font-size="12" font-weight="700"><tspan x="26" y="37">SA-ASR · SD</tspan></text>
+    <text x="369" y="37" text-anchor="end" font-size="12">18 Nov 2026</text>
+    <text font-size="22" font-weight="700"><tspan x="26" y="71">EAR-1 challenge scoring</tspan></text>
+    <text font-size="14"><tspan x="26" y="119">Score diarization with DER and Mandarin</tspan><tspan x="26" y="137">speaker-attributed ASR with cpCER.</tspan></text>
+    <path d="M26 169h346" stroke="#b7d9c5"/>
+    <text font-size="13" font-weight="600"><tspan x="26" y="189">SD → submission conversion → DER</tspan><tspan x="26" y="205">SA-ASR → conversion → EAR-1 norm → cpCER</tspan></text>
+    <text x="26" y="241" font-size="12" font-weight="700">View commit ↗</text>
+    <text x="369" y="241" text-anchor="end" font-size="12" font-family="monospace">c1bc96c</text>
+  </g>
+</svg>

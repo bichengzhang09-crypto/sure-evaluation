@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="398" height="264" viewBox="0 0 398 264">
+  <title>SLU answer judging</title>
+  <defs><linearGradient id="wash" x2="1" y2="1"><stop stop-color="#fff5e3"/><stop offset="1" stop-color="#fae4de"/></linearGradient></defs>
+  <rect width="398" height="264" fill="#fff"/>
+  <rect x="7" y="8" width="384" height="248" rx="22" fill="url(#wash)" stroke="#e8cfc1"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#794d3d">
+    <text font-size="12" font-weight="700"><tspan x="26" y="37">SLU</tspan></text>
+    <text x="369" y="37" text-anchor="end" font-size="12">11 Nov 2026</text>
+    <text font-size="22" font-weight="700"><tspan x="26" y="71">SLU answer judging</tspan></text>
+    <text font-size="14"><tspan x="26" y="119">Grade spoken-language understanding answers</tspan><tspan x="26" y="137">against a custom rubric on a 0–100 scale.</tspan></text>
+    <path d="M26 169h346" stroke="#e8cfc1"/>
+    <text font-size="13" font-weight="600"><tspan x="26" y="189">Answer + rubric → LLM judge → mean score</tspan></text>
+    <text x="26" y="241" font-size="12" font-weight="700">View commit ↗</text>
+    <text x="369" y="241" text-anchor="end" font-size="12" font-family="monospace">137fbcc</text>
+  </g>
+</svg>
