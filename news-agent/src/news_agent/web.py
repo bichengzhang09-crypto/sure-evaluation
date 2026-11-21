@@ -64,16 +64,22 @@ def article(entry: Entry, previous: list[Entry]) -> str:
                               *entry.support.metrics, *entry.support.pipeline_ids]))
     label = escape(" · ".join(task_label(t) for t in entry.support.tasks))
     count = len(rows)
+    commit = entry.links.source_change
     return f'''<article class="release" id="{entry.id}" data-search="{search}"
       data-tasks="{escape(' '.join(entry.support.tasks))}">{aliases}
-      <header><span>{label}</span><time datetime="{entry.published_at}">{entry.published_at:%d %b %Y}</time></header>
-      <h2>{escape(entry.title)}</h2><p>{escape(entry.summary)}</p>
+      <div class="release-date"><span class="timeline-dot"></span>
+      <time datetime="{entry.published_at}"><a href="{escape(commit, quote=True)}"
+      title="Open the source commit"><strong>{entry.published_at:%d %b}</strong><span>{entry.published_at.year}</span></a></time>
+      <a class="release-type" href="{escape(commit, quote=True)}">Commit {entry.evidence.source_commit[:7]} ↗</a></div>
+      <div class="release-content"><div class="release-kicker"><span class="status"><i></i> <span data-i18n="supported">Supported</span></span>
+      <span class="release-ref">{label} · {count:02d} {'pipeline' if count == 1 else 'pipelines'}</span></div>
+      <h2>{escape(entry.title)}</h2><p class="release-summary">{escape(entry.summary)}</p>
       <p class="flow">{escape(pipeline_brief(entry))}</p>
-      <details><summary>{count} {'pipeline' if count == 1 else 'pipelines'}</summary>
-      <p>{escape(entry.limitations)}</p><ul>{''.join(rows)}</ul>
-      <p class="sources">Task documentation &nbsp; {docs}</p>
-      {f'<p class="sources">Tests &nbsp; {tests}</p>' if tests else ''}</details>
-      {link('Commit ' + entry.evidence.source_commit[:7], entry.links.source_change, 'commit')}</article>'''
+      <details><summary>{count} <span class="pipeline-word" data-en="{'pipeline' if count == 1 else 'pipelines'}" data-zh="{'条流水线' if count != 1 else '条流水线'}">{'pipeline' if count == 1 else 'pipelines'}</span></summary>
+      <p class="release-summary"><strong data-i18n="beforeRun">Before you run</strong><br>{escape(entry.limitations)}</p><ul>{''.join(rows)}</ul>
+      <p class="sources"><span data-i18n="taskDocumentation">Task documentation</span> &nbsp; {docs}</p>
+      {f'<p class="sources"><span data-i18n="tests">Tests</span> &nbsp; {tests}</p>' if tests else ''}</details>
+      </div></article>'''
 
 
 def render_page(entries: list[Entry]) -> str:
@@ -92,8 +98,20 @@ def render_page(entries: list[Entry]) -> str:
             old = by_id.get(old.supersedes)
         articles.append(article(entry, previous))
     template = files("news_agent").joinpath("templates/news.html").read_text(encoding="utf-8")
-    return (template.replace("{{COUNT}}", str(len(active))).replace("{{FILTERS}}", chips)
-            .replace("{{CONTENT}}", "".join(articles)))
+    latest = active[0] if active else None
+    repository = "https://github.com/bichengzhang09-crypto/sure-evaluation"
+    replacements = {
+        "{{REPOSITORY}}": repository,
+        "{{DATE}}": latest.published_at.strftime("%d %b %Y") if latest else "No updates yet",
+        "{{COUNT}}": str(len(active)),
+        "{{ROUTES}}": str(len({p for e in active for p in e.support.pipeline_ids})),
+        "{{TASKS}}": str(len({t for e in active for t in e.support.tasks})),
+        "{{FILTERS}}": chips,
+        "{{CONTENT}}": "".join(articles),
+    }
+    for token, value in replacements.items():
+        template = template.replace(token, value)
+    return template
 
 
 def render_banner(entries: list[Entry]) -> str:

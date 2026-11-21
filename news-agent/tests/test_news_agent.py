@@ -138,6 +138,16 @@ def test_visual_page_escapes_source_labels_and_links(facts, copy):
     assert all(pid in output for pid in IDS)
 
 
+def test_visual_page_keeps_hero_timeline_and_language_switch(facts, copy):
+    entry = entry_for(facts, copy)
+    output = render_page([entry])
+    assert '<header class="hero">' in output
+    assert '<div class="release-date">' in output
+    assert entry.links.source_change in output
+    assert '<div class="language-switch"' in output
+    assert 'data-language="en"' in output and 'data-language="zh"' in output
+
+
 def test_visual_publication_only_allows_named_assets_and_checks_html_links(facts, copy):
     assert allowed("docs/news/index.html") and allowed("docs/news/banner.svg")
     assert not allowed("docs/news/arbitrary.html")
