@@ -51,6 +51,9 @@ class KimiClient:
         self.config = config
 
     def generate(self, frozen: dict) -> Copy:
+        return Copy.model_validate(self.request(frozen))
+
+    def request(self, frozen: dict) -> dict:
         key = os.environ.get("NEWS_AGENT_KIMI_API_KEY", "").strip()
         if not key or any(ord(c) < 32 or ord(c) == 127 for c in key):
             raise ValueError("Set a valid NEWS_AGENT_KIMI_API_KEY")
@@ -78,7 +81,7 @@ class KimiClient:
                 started = time.monotonic()
                 with urlopen(request, timeout=self.config.timeout_seconds) as response:
                     result = read_stream(response, started + self.config.timeout_seconds)
-                return Copy.model_validate(result)
+                return result
             except HTTPError as exc:
                 # Do not persist response bodies, headers or keys in diagnostics.
                 if exc.code not in {429, 500, 502, 503, 504} or attempt + 1 == self.config.attempts:
