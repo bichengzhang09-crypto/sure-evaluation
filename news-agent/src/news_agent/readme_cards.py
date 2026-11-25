@@ -4,17 +4,9 @@ from html import escape
 from textwrap import wrap
 
 from .contract import Entry
-from .web import METRICS, pipeline_brief, task_label
+from .web import METRICS, PR_NUMBERS, pipeline_brief, pr_url, task_label
 
 PAGES = "https://bichengzhang09-crypto.github.io/sure-evaluation/"
-PR_NUMBERS = {
-    "3853dab1db5d7d44691b25a6620932742a1c0a50": 49,
-    "c1bc96cf865baef07e37f702a8286d3a6c68a5a2": 47,
-    "549eb711483e7c4e515479864bca8e0abd558572": 44,
-    "137fbcc8b89b8c96ca10e641d409808c22165435": 38,
-    "abfdd68801cce39e28a27ccfb9335deee091a27f": 40,
-    "204ffe814fa7b0797e8471d80916339d1dfd0690": 39,
-}
 CARD_SUMMARIES = {
     "ear-1": "Score EAR-1 submissions for speaker diarization with DER and Mandarin speaker-attributed ASR with cpCER.",
     "ear-1-scoring": "Score EAR-1 submissions for speaker diarization with DER and Mandarin speaker-attributed ASR with cpCER.",
@@ -38,14 +30,6 @@ def _metric_labels(entry: Entry) -> str:
     if len(labels) <= 5:
         return " · ".join(labels)
     return " · ".join(labels[:4]) + f" · +{len(labels) - 4} more"
-
-
-def _pr_url(entry: Entry) -> str:
-    repository = entry.links.source_change.rsplit("/commit/", 1)[0]
-    number = PR_NUMBERS.get(entry.evidence.source_commit)
-    if number is None:
-        return entry.links.source_change
-    return f"{repository}/pull/{number}"
 
 
 def _card_summary(entry: Entry) -> str:
@@ -92,30 +76,44 @@ def tile(entry: Entry) -> str:
 </svg>'''
 
 
+def rail_tile(entries: list[Entry]) -> str:
+    """Render a fixed README preview of the live scroll rail."""
+    elements = []
+    for index, entry in enumerate(entries):
+        card = tile(entry)
+        body = card[card.index("<rect "):card.rindex("</svg>")]
+        elements.append(f'<g transform="translate(18 {18 + index * 296})">{body}</g>')
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="820" height="460" viewBox="0 0 820 460" role="img" aria-labelledby="title desc">
+<title id="title">Latest SURE evaluation support</title>
+<desc id="desc">A fixed preview of the latest announcement cards. Open the live announcement rail for independent scrolling.</desc>
+<defs><clipPath id="window"><rect x="10" y="10" width="778" height="440" rx="12"/></clipPath><linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7f8fa" stop-opacity="0"/><stop offset="0.88" stop-color="#f7f8fa" stop-opacity="0.96"/><stop offset="1" stop-color="#f7f8fa"/></linearGradient></defs>
+<rect width="820" height="460" rx="14" fill="#f7f8fa" stroke="#d4d9df" stroke-width="2"/>
+<g clip-path="url(#window)">{''.join(elements)}<rect x="10" y="372" width="778" height="78" fill="url(#fade)"/></g>
+<rect x="798" y="24" width="4" height="412" rx="2" fill="#e1e5e9"/><rect x="798" y="24" width="4" height="142" rx="2" fill="#68717d"/>
+</svg>'''
+
+
 def readme_board(entries: list[Entry]) -> tuple[str, dict[str, str]]:
-    """Render newest-first cards inside a vertically scrollable README rail."""
+    """Render a GitHub-compatible preview and link to the live scroll rail."""
     if not entries:
         return "No releases yet.\n", {}
 
-    cards = []
     assets: dict[str, str] = {}
     for entry in entries:
         path = f"docs/news/cards/{entry.id}.svg"
         assets[path] = tile(entry)
-        alt = escape(f"{entry.title} · {_card_summary(entry)} · {_metric_labels(entry)}", quote=True)
-        cards.append(
-            f'<p style="margin:0 0 16px"><a href="{escape(_pr_url(entry), quote=True)}">'
-            f'<img src="./{path}" width="760" alt="{alt}"></a></p>'
+    assets["docs/news/readme-rail.svg"] = rail_tile(entries)
+    board = (
+        "## Recently supported\n\n"
+        '<p><a href="' + escape(PAGES + "#latest-support", quote=True) + '">'
+        '<img src="./docs/news/readme-rail.svg" width="820" '
+        'alt="Latest evaluation support. Open the live announcement rail for independent scrolling."></a></p>\n\n'
+        '<details><summary>Open source PRs for these releases</summary>\n\n<ul>\n'
+        + "\n".join(
+            f'<li><a href="{escape(pr_url(entry), quote=True)}">'
+            f'{escape(entry.title)} · PR ↗</a></li>' for entry in entries
         )
-
-    rail = (
-        '<div style="position:relative">'
-        '<div style="height:460px;overflow-y:scroll;padding:16px 16px 34px;'
-        'border:1px solid #d4d9df;border-radius:14px;background:#f7f8fa">\n'
-        + "\n".join(cards)
-        + '\n</div><div aria-hidden="true" style="position:absolute;right:1px;bottom:1px;left:1px;'
-          'height:72px;border-radius:0 0 13px 13px;pointer-events:none;'
-          'background:linear-gradient(to bottom,rgba(247,248,250,0),#f7f8fa 88%)"></div></div>'
+        + "\n</ul>\n</details>\n\n"
+        f"[Open the live announcement rail ↗]({PAGES}#latest-support)\n"
     )
-    board = f"## Recently supported\n\n{rail}\n\n[View announcement history ↗]({PAGES})\n"
     return board, assets

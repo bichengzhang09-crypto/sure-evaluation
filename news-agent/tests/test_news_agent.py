@@ -120,8 +120,13 @@ def test_english_page_and_readme_boundaries(facts, copy):
     output = render([entry], readme)
     validate_output({"README.md": readme}, output, lambda p: (ROOT / p).is_file())
     assert outside_block(readme) == outside_block(output["README.md"])
-    assert "height:460px;overflow-y:scroll" in output["README.md"]
-    assert "docs/news/cards/ear-1.svg" in output["README.md"]
+    assert "docs/news/readme-rail.svg" in output["README.md"]
+    assert "latest-support" in output["README.md"]
+    assert "support-rail-viewport" in output["docs/news/index.html"]
+    assert "height:460px;overflow-y:scroll" in output["docs/news/index.html"]
+    assert 'width="820" height="460"' in output["docs/news/readme-rail.svg"]
+    assert 'linearGradient id="fade"' in output["docs/news/readme-rail.svg"]
+    assert "docs/news/cards/ear-1.svg" in output
     assert "RECENT SUPPORT" in output["docs/news/cards/ear-1.svg"]
     assert "01 · NEW SUPPORT" not in output["docs/news/cards/ear-1.svg"]
     assert "METRICS" in output["docs/news/cards/ear-1.svg"]
@@ -155,10 +160,13 @@ def test_visual_page_keeps_hero_timeline_and_language_switch(facts, copy):
     assert 'data-language="en"' in output and 'data-language="zh"' in output
     assert 'data-zh="EAR-1 挑战赛评分支持"' in output
     assert ".release>span[id]{display:none}" in output
+    assert 'id="latest-support"' in output
+    assert 'href="https://github.com/PigeonDan1/sure-evaluation/pull/49"' in output
 
 
 def test_visual_publication_only_allows_named_assets_and_checks_html_links(facts, copy):
     assert allowed("docs/news/index.html") and allowed("docs/news/banner.svg")
+    assert allowed("docs/news/readme-rail.svg")
     assert not allowed("docs/news/arbitrary.html")
     assert not allowed("docs/news/arbitrary.svg")
     assert not allowed("docs/news/tracking.js")
@@ -269,7 +277,8 @@ def test_only_five_recent_entries_are_in_readme(facts, copy):
     for i, entry in enumerate(entries):
         entry.id = f"entry-{i}"
     output = render(entries, START + "\n" + END)
-    assert output["README.md"].count("docs/news/cards/entry-") == 5
+    assert output["README.md"].count("docs/news/readme-rail.svg") == 1
+    assert sum(path.startswith("docs/news/cards/entry-") for path in output) == 5
     assert output["docs/news/index.md"].count('<a id="') == 7
 
 

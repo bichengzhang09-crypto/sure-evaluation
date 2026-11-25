@@ -7,6 +7,14 @@ from .contract import Entry
 
 TASK_NAMES = {"sd": "Speaker diarization", "sa_asr": "Speaker-attributed ASR"}
 METRICS = {"der": "DER", "cpcer": "cpCER"}
+PR_NUMBERS = {
+    "3853dab1db5d7d44691b25a6620932742a1c0a50": 49,
+    "c1bc96cf865baef07e37f702a8286d3a6c68a5a2": 47,
+    "549eb711483e7c4e515479864bca8e0abd558572": 44,
+    "137fbcc8b89b8c96ca10e641d409808c22165435": 38,
+    "abfdd68801cce39e28a27ccfb9335deee091a27f": 40,
+    "204ffe814fa7b0797e8471d80916339d1dfd0690": 39,
+}
 ZH_COPY = {
     "ear-1-scoring": {
         "title": "EAR-1 挑战赛评分支持",
@@ -61,6 +69,12 @@ def source_link(entry: Entry, path: str) -> str:
     commit_url = entry.links.source_change
     repository_url = commit_url.rsplit("/commit/", 1)[0]
     return f"{repository_url}/blob/{entry.evidence.source_commit}/{path}"
+
+
+def pr_url(entry: Entry) -> str:
+    repository = entry.links.source_change.rsplit("/commit/", 1)[0]
+    number = PR_NUMBERS.get(entry.evidence.source_commit)
+    return f"{repository}/pull/{number}" if number else entry.links.source_change
 
 
 def link(label: str, url: str, css: str = "") -> str:
@@ -145,6 +159,23 @@ def render_page(entries: list[Entry]) -> str:
     template = files("news_agent").joinpath("templates/news.html").read_text(encoding="utf-8")
     latest = active[0] if active else None
     repository = "https://github.com/bichengzhang09-crypto/sure-evaluation"
+    rail_cards = []
+    for entry in active[:5]:
+        summary = entry.summary
+        rail_cards.append(
+            f'<a class="support-rail-card" href="{escape(pr_url(entry), quote=True)}">'
+            f'<img src="cards/{escape(entry.id, quote=True)}.svg" width="760" '
+            f'alt="{escape(entry.title + " · " + summary, quote=True)}"></a>'
+        )
+    rail = (
+        '<section class="support-rail" id="latest-support" aria-labelledby="latest-support-title">'
+        '<div class="support-rail-heading"><div><span class="support-rail-kicker">RECENT SUPPORT</span>'
+        '<h2 id="latest-support-title">Latest evaluation support</h2></div>'
+        '<a href="#updates">View full history ↗</a></div>'
+        '<div class="support-rail-frame"><div class="support-rail-viewport">'
+        + "".join(rail_cards)
+        + '</div><div class="support-rail-fade" aria-hidden="true"></div></div></section>'
+    )
     replacements = {
         "{{REPOSITORY}}": repository,
         "{{DATE}}": latest.published_at.strftime("%d %b %Y") if latest else "No updates yet",
@@ -152,6 +183,7 @@ def render_page(entries: list[Entry]) -> str:
         "{{ROUTES}}": str(len({p for e in active for p in e.support.pipeline_ids})),
         "{{TASKS}}": str(len({t for e in active for t in e.support.tasks})),
         "{{FILTERS}}": chips,
+        "{{RAIL}}": rail,
         "{{CONTENT}}": "".join(articles),
     }
     for token, value in replacements.items():
