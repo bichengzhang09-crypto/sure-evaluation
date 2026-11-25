@@ -1,16 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="398" height="264" viewBox="0 0 398 264">
-  <title>EAR-1 challenge scoring</title>
-  <defs><linearGradient id="wash" x2="1" y2="1"><stop stop-color="#eff9e7"/><stop offset="1" stop-color="#d9f1e8"/></linearGradient></defs>
-  <rect width="398" height="264" fill="#fff"/>
-  <rect x="7" y="8" width="384" height="248" rx="22" fill="url(#wash)" stroke="#b7d9c5"/>
-  <g font-family="Arial, Helvetica, sans-serif" fill="#22594a">
-    <text font-size="12" font-weight="700"><tspan x="26" y="37">SA-ASR · SD</tspan></text>
-    <text x="369" y="37" text-anchor="end" font-size="12">18 Nov 2026</text>
-    <text font-size="22" font-weight="700"><tspan x="26" y="71">EAR-1 challenge scoring</tspan></text>
-    <text font-size="14"><tspan x="26" y="119">Score diarization with DER and Mandarin</tspan><tspan x="26" y="137">speaker-attributed ASR with cpCER.</tspan></text>
-    <path d="M26 169h346" stroke="#b7d9c5"/>
-    <text font-size="13" font-weight="600"><tspan x="26" y="189">SD → submission conversion → DER</tspan><tspan x="26" y="205">SA-ASR → conversion → EAR-1 norm → cpCER</tspan></text>
-    <text x="26" y="241" font-size="12" font-weight="700">View commit ↗</text>
-    <text x="369" y="241" text-anchor="end" font-size="12" font-family="monospace">c1bc96c</text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="258" viewBox="0 0 760 258" role="img" aria-labelledby="title desc">
+<title id="title">EAR-1 challenge scoring</title>
+<desc id="desc">Score diarization with DER and Mandarin speaker-attributed ASR with cpCER.</desc>
+<rect x="1" y="1" width="758" height="256" rx="14" fill="#ffffff" stroke="#d4d9df" stroke-width="2"/>
+<rect x="24" y="0" width="72" height="4" rx="2" fill="#111827"/>
+<g font-family="Arial, Helvetica, sans-serif">
+  <text x="28" y="31" fill="#68717d" font-size="11" font-weight="700" letter-spacing="2">SURE / RECENT SUPPORT</text>
+  <text x="732" y="31" text-anchor="end" fill="#68717d" font-size="11">18 Nov 2026</text>
+  <text x="28" y="75" fill="#111827" font-family="Georgia,Times New Roman,serif" font-size="27" font-weight="700">EAR-1 challenge scoring</text>
+  <text x="28" y="124" fill="#3f4752" font-family="Arial,sans-serif" font-size="14" font-weight="400">Score diarization with DER and Mandarin speaker-attributed ASR with cpCER.</text>
+  <line x1="28" y1="164" x2="732" y2="164" stroke="#e1e5e9"/>
+  <text x="28" y="188" fill="#68717d" font-size="10" font-weight="700" letter-spacing="1.4">METRICS</text>
+  <text x="105" y="188" fill="#111827" font-size="12" font-weight="700">cpCER · DER</text>
+  <text x="28" y="211" fill="#68717d" font-size="10" font-weight="700" letter-spacing="1.4">PIPELINE</text>
+  <text x="105" y="211" fill="#111827" font-family="Arial,sans-serif" font-size="12" font-weight="600">SD → submission conversion → DER</text><text x="105" y="228" fill="#111827" font-family="Arial,sans-serif" font-size="12" font-weight="600">SA-ASR → conversion → EAR-1 norm → cpCER</text>
+  <text x="732" y="239" text-anchor="end" fill="#68717d" font-size="10">SA-ASR · SD · 02 routes · DETAILS ↗</text>
+</g>
 </svg>

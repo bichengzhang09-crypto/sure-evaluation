@@ -120,11 +120,13 @@ def test_english_page_and_readme_boundaries(facts, copy):
     output = render([entry], readme)
     validate_output({"README.md": readme}, output, lambda p: (ROOT / p).is_file())
     assert outside_block(readme) == outside_block(output["README.md"])
-    assert "SURE / RECENT SUPPORT" in output["README.md"]
-    assert "METRICS" in output["README.md"]
-    assert "PIPELINES" in output["README.md"]
-    assert "TASKS" in output["README.md"]
-    assert output["README.md"].count("Read full announcement") == 1
+    assert "overflow-y:auto" in output["README.md"]
+    assert "docs/news/cards/ear-1.svg" in output["README.md"]
+    assert "SURE / RECENT SUPPORT" in output["docs/news/cards/ear-1.svg"]
+    assert "METRICS" in output["docs/news/cards/ear-1.svg"]
+    assert "PIPELINE" in output["docs/news/cards/ear-1.svg"]
+    assert "#ffffff" in output["docs/news/cards/ear-1.svg"]
+    assert "#111827" in output["docs/news/cards/ear-1.svg"]
     assert all(pipeline_id in output["docs/news/index.md"] for pipeline_id in IDS)
     assert '<a id="ear-1">' in output["docs/news/index.md"]
 
@@ -264,7 +266,7 @@ def test_only_five_recent_entries_are_in_readme(facts, copy):
     for i, entry in enumerate(entries):
         entry.id = f"entry-{i}"
     output = render(entries, START + "\n" + END)
-    assert output["README.md"].count("Read full announcement") == 5
+    assert output["README.md"].count("docs/news/cards/entry-") == 5
     assert output["docs/news/index.md"].count('<a id="') == 7
 
 
