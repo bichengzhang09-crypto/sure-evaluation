@@ -19,12 +19,12 @@
 
 ## Recently supported
 
-<div style="position:relative"><div style="height:460px;overflow-y:auto;padding:16px 16px 34px;border:1px solid #d4d9df;border-radius:14px;background:#f7f8fa">
-<p style="margin:0 0 16px"><a href="https://github.com/PigeonDan1/sure-evaluation/pull/47"><img src="./docs/news/cards/ear-1-scoring.svg" width="760" alt="EAR-1 challenge scoring · Score diarization with DER and Mandarin speaker-attributed ASR with cpCER. · cpCER · DER"></a></p>
-<p style="margin:0 0 16px"><a href="https://github.com/PigeonDan1/sure-evaluation/pull/44"><img src="./docs/news/cards/fd-bench.svg" width="760" alt="FD-Bench dialogue timing · Measure when a system starts speaking, replies early or interrupts a user. · EIT · ERT · FSED · IRD"></a></p>
-<p style="margin:0 0 16px"><a href="https://github.com/PigeonDan1/sure-evaluation/pull/38"><img src="./docs/news/cards/slu-judge.svg" width="760" alt="SLU answer judging · Grade spoken-language understanding answers against a custom rubric on a 0–100 scale. · LLM_JUDGE"></a></p>
-<p style="margin:0 0 16px"><a href="https://github.com/PigeonDan1/sure-evaluation/pull/40"><img src="./docs/news/cards/etc-bench.svg" width="760" alt="ETC-Bench transcript scoring · Normalize equivalent written forms on both sides of an ASR comparison in 12 languages. · CER · WER"></a></p>
-<p style="margin:0 0 16px"><a href="https://github.com/PigeonDan1/sure-evaluation/pull/39"><img src="./docs/news/cards/openbench-se.svg" width="760" alt="OpenBench speech enhancement · Score intelligibility, spectral distortion and predicted speech quality with opt-in metrics. · DNSMOS_BAK · DNSMOS_P808 · DNSMOS_SIG · ESTOI · +11 more"></a></p>
+<div style="position:relative"><div style="height:460px;overflow-y:scroll;padding:16px 16px 34px;border:1px solid #d4d9df;border-radius:14px;background:#f7f8fa">
+<p style="margin:0 0 16px"><a href="https://github.com/PigeonDan1/sure-evaluation/pull/47"><img src="./docs/news/cards/ear-1-scoring.svg" width="760" alt="EAR-1 challenge scoring · Score EAR-1 submissions for speaker diarization with DER and Mandarin speaker-attributed ASR with cpCER. · cpCER · DER"></a></p>
+<p style="margin:0 0 16px"><a href="https://github.com/PigeonDan1/sure-evaluation/pull/44"><img src="./docs/news/cards/fd-bench.svg" width="760" alt="FD-Bench dialogue timing · Evaluate full-duplex dialogue timing by measuring response start, early reply, and interruption behavior. · EIT · ERT · FSED · IRD"></a></p>
+<p style="margin:0 0 16px"><a href="https://github.com/PigeonDan1/sure-evaluation/pull/38"><img src="./docs/news/cards/slu-judge.svg" width="760" alt="SLU answer judging · Score spoken-language understanding answers against a custom rubric with an API-based LLM judge. · LLM_JUDGE"></a></p>
+<p style="margin:0 0 16px"><a href="https://github.com/PigeonDan1/sure-evaluation/pull/40"><img src="./docs/news/cards/etc-bench.svg" width="760" alt="ETC-Bench transcript scoring · Canonicalize equivalent transcript forms in 12 languages before CER or WER scoring. · CER · WER"></a></p>
+<p style="margin:0 0 16px"><a href="https://github.com/PigeonDan1/sure-evaluation/pull/39"><img src="./docs/news/cards/openbench-se.svg" width="760" alt="OpenBench speech enhancement · Evaluate enhanced speech for intelligibility, spectral distortion, and predicted quality with optional metrics. · DNSMOS_BAK · DNSMOS_P808 · DNSMOS_SIG · ESTOI · +11 more"></a></p>
 </div><div aria-hidden="true" style="position:absolute;right:1px;bottom:1px;left:1px;height:72px;border-radius:0 0 13px 13px;pointer-events:none;background:linear-gradient(to bottom,rgba(247,248,250,0),#f7f8fa 88%)"></div></div>
 
 [View announcement history ↗](https://bichengzhang09-crypto.github.io/sure-evaluation/)

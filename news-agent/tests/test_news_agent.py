@@ -120,12 +120,14 @@ def test_english_page_and_readme_boundaries(facts, copy):
     output = render([entry], readme)
     validate_output({"README.md": readme}, output, lambda p: (ROOT / p).is_file())
     assert outside_block(readme) == outside_block(output["README.md"])
-    assert "overflow-y:auto" in output["README.md"]
+    assert "height:460px;overflow-y:scroll" in output["README.md"]
     assert "docs/news/cards/ear-1.svg" in output["README.md"]
-    assert "01 · NEW SUPPORT" in output["docs/news/cards/ear-1.svg"]
+    assert "RECENT SUPPORT" in output["docs/news/cards/ear-1.svg"]
+    assert "01 · NEW SUPPORT" not in output["docs/news/cards/ear-1.svg"]
     assert "METRICS" in output["docs/news/cards/ear-1.svg"]
     assert "PIPELINE" in output["docs/news/cards/ear-1.svg"]
     assert "https://github.com/PigeonDan1/sure-evaluation/pull/49" in output["README.md"]
+    assert "Score EAR-1 submissions for speaker diarization" in output["docs/news/cards/ear-1.svg"]
     assert "#ffffff" in output["docs/news/cards/ear-1.svg"]
     assert "#111827" in output["docs/news/cards/ear-1.svg"]
     assert all(pipeline_id in output["docs/news/index.md"] for pipeline_id in IDS)

@@ -15,6 +15,14 @@ PR_NUMBERS = {
     "abfdd68801cce39e28a27ccfb9335deee091a27f": 40,
     "204ffe814fa7b0797e8471d80916339d1dfd0690": 39,
 }
+CARD_SUMMARIES = {
+    "ear-1": "Score EAR-1 submissions for speaker diarization with DER and Mandarin speaker-attributed ASR with cpCER.",
+    "ear-1-scoring": "Score EAR-1 submissions for speaker diarization with DER and Mandarin speaker-attributed ASR with cpCER.",
+    "fd-bench": "Evaluate full-duplex dialogue timing by measuring response start, early reply, and interruption behavior.",
+    "slu-judge": "Score spoken-language understanding answers against a custom rubric with an API-based LLM judge.",
+    "etc-bench": "Canonicalize equivalent transcript forms in 12 languages before CER or WER scoring.",
+    "openbench-se": "Evaluate enhanced speech for intelligibility, spectral distortion, and predicted quality with optional metrics.",
+}
 
 
 def _lines(value: str, width: int, limit: int) -> list[str]:
@@ -40,6 +48,10 @@ def _pr_url(entry: Entry) -> str:
     return f"{repository}/pull/{number}"
 
 
+def _card_summary(entry: Entry) -> str:
+    return CARD_SUMMARIES.get(entry.id, entry.summary)
+
+
 def _text_rows(values: list[str], x: int, y: int, size: int, fill: str,
                weight: int = 400, step: int = 18,
                family: str = "Arial,sans-serif") -> str:
@@ -50,10 +62,10 @@ def _text_rows(values: list[str], x: int, y: int, size: int, fill: str,
     )
 
 
-def tile(entry: Entry, number: int) -> str:
+def tile(entry: Entry) -> str:
     """Render a white, linked card with only the announcement essentials."""
     title = _lines(entry.title, 44, 2)
-    summary = _lines(entry.summary, 92, 2)
+    summary = _lines(_card_summary(entry), 92, 2)
     brief = _lines(pipeline_brief(entry), 96, 2)
     metrics = _metric_labels(entry)
     tasks = " · ".join(task_label(task) for task in entry.support.tasks)
@@ -61,11 +73,11 @@ def tile(entry: Entry, number: int) -> str:
     pr_label = f"PR #{pr_number} ↗" if pr_number else "SOURCE ↗"
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="760" height="280" viewBox="0 0 760 280" role="img" aria-labelledby="title desc">
 <title id="title">{escape(entry.title)}</title>
-<desc id="desc">{escape(entry.summary)}</desc>
+<desc id="desc">{escape(_card_summary(entry))}</desc>
 <rect x="1" y="1" width="758" height="278" rx="14" fill="#ffffff" stroke="#d4d9df" stroke-width="2"/>
 <rect x="24" y="0" width="72" height="4" rx="2" fill="#111827"/>
 <g font-family="Arial, Helvetica, sans-serif">
-  <text x="28" y="31" fill="#68717d" font-size="11" font-weight="700" letter-spacing="2">{number:02d} · NEW SUPPORT</text>
+  <text x="28" y="31" fill="#68717d" font-size="11" font-weight="700" letter-spacing="2">RECENT SUPPORT</text>
   <text x="732" y="31" text-anchor="end" fill="#68717d" font-size="11">{entry.published_at:%d %b %Y}</text>
   {_text_rows(title, 28, 77, 29, '#111827', 700, 31, 'Georgia,Times New Roman,serif')}
   {_text_rows(summary, 28, 126 if len(title) == 1 else 144, 14, '#3f4752', 400, 20)}
@@ -87,10 +99,10 @@ def readme_board(entries: list[Entry]) -> tuple[str, dict[str, str]]:
 
     cards = []
     assets: dict[str, str] = {}
-    for number, entry in enumerate(entries, 1):
+    for entry in entries:
         path = f"docs/news/cards/{entry.id}.svg"
-        assets[path] = tile(entry, number)
-        alt = escape(f"{entry.title} · {entry.summary} · {_metric_labels(entry)}", quote=True)
+        assets[path] = tile(entry)
+        alt = escape(f"{entry.title} · {_card_summary(entry)} · {_metric_labels(entry)}", quote=True)
         cards.append(
             f'<p style="margin:0 0 16px"><a href="{escape(_pr_url(entry), quote=True)}">'
             f'<img src="./{path}" width="760" alt="{alt}"></a></p>'
@@ -98,7 +110,7 @@ def readme_board(entries: list[Entry]) -> tuple[str, dict[str, str]]:
 
     rail = (
         '<div style="position:relative">'
-        '<div style="height:460px;overflow-y:auto;padding:16px 16px 34px;'
+        '<div style="height:460px;overflow-y:scroll;padding:16px 16px 34px;'
         'border:1px solid #d4d9df;border-radius:14px;background:#f7f8fa">\n'
         + "\n".join(cards)
         + '\n</div><div aria-hidden="true" style="position:absolute;right:1px;bottom:1px;left:1px;'
