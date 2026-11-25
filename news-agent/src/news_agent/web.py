@@ -86,6 +86,7 @@ def localized_copy(entry: Entry) -> dict[str, str]:
         "brief": pipeline_brief(entry),
         "limitations": entry.limitations,
         **ZH_COPY.get(entry.id, {}),
+        **(entry.zh.model_dump() if entry.zh else {}),
     }
 
 

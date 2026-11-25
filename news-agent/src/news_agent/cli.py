@@ -166,6 +166,7 @@ def main(argv=None) -> int:
     draw.add_argument("--output", type=Path, help="Preview directory (default under own state)")
     sub.add_parser("check", help="Validate facts, links and generated-page freshness")
     sub.add_parser("status", help="Show own cursors, queue and errors")
+    sub.add_parser("poll-personal", help="Review upstream main with Kimi and publish to the personal fork")
     doctor = sub.add_parser("doctor", help="Read-only local diagnostics")
     doctor.add_argument("--smoke", action="store_true", help="Call real Kimi once; write no announcements")
     args = parser.parse_args(argv)
@@ -178,6 +179,9 @@ def main(argv=None) -> int:
             if args.mode:
                 config.mode = args.mode
             result = run_cycle(config, since=args.since, copy_file=args.copy_file)
+        elif args.command == "poll-personal":
+            from .personal import poll
+            result = poll(config)
         elif args.command == "status":
             with locked(config.state_dir):
                 state = State(config.state_dir)

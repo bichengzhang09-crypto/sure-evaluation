@@ -159,6 +159,43 @@
       "title": "Links",
       "type": "object"
     },
+    "LocalizedCopy": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "maxLength": 3000,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 3000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "limitations": {
+          "maxLength": 3000,
+          "minLength": 1,
+          "title": "Limitations",
+          "type": "string"
+        },
+        "brief": {
+          "maxLength": 3000,
+          "minLength": 1,
+          "title": "Brief",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "summary",
+        "limitations",
+        "brief"
+      ],
+      "title": "LocalizedCopy",
+      "type": "object"
+    },
     "Node": {
       "additionalProperties": false,
       "properties": {
@@ -244,6 +281,17 @@
       "minLength": 1,
       "title": "Limitations",
       "type": "string"
+    },
+    "zh": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LocalizedCopy"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "pipeline_brief": {
       "anyOf": [

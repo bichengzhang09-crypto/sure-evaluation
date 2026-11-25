@@ -170,7 +170,10 @@ README 内容只能改变 `SURE-NEWS` 标记区。首次在 README 插入标记�
 ## 当前已部署实例
 
 已创建 Conda 环境 `news-agent`（Python 3.12），并安装本包、pytest 和 Ruff。
-运行实例使用独立 checkout 和包副本；工作区实现仍保留本地未提交状态。
+运行实例从独立 checkout 安装。每次执行 `poll-personal` 时拉取上游和个人仓库的
+`main`。Kimi `k3.1-pro` 审阅新增评测能力和影响现有公告的变化。需要发布时，
+程序按个人仓库模板生成中英文内容、卡片和链接，校验后快进推送到个人仓库的
+`main`。GitHub Pages 由个人仓库现有的部署工作流更新。每轮结果写入日志。
 
 | 内容 | 位置或状态 |
 | --- | --- |
@@ -178,9 +181,9 @@ README 内容只能改变 `SURE-NEWS` 标记区。首次在 README 插入标记�
 | 凭据 | `~/.config/news-agent/credentials.env`，权限 `0600` |
 | 部署目录 | `~/.local/share/news-agent/` |
 | 状态和日志 | `~/.local/state/news-agent/` |
-| 用户定时器 | `news-agent.timer`，已启用，每 30 分钟运行并带随机延迟 |
+| 用户定时器 | `news-agent.timer`，北京时间每日 00:00、06:00、12:00、18:00 |
 | 退出登录后运行 | 用户 `linger` 已开启 |
-| 发布模式 | 配置和 service 均显式指定 `dry-run` |
+| 发布目标 | `poll-personal` 只写入 `bichengzhang09-crypto/sure-evaluation:main` |
 | 真实回放报告 | `~/.local/state/news-agent/validation/old-pr-validation.json` |
 
 可直接使用命令（wrapper 自动加载独立凭据和配置）：

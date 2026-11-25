@@ -71,7 +71,12 @@ class Evidence(Strict):
     test_result: Text
 
 
+class LocalizedCopy(Copy):
+    brief: Text
+
+
 class Entry(Copy):
+    zh: LocalizedCopy | None = None
     pipeline_brief: Text | None = None
     id: Annotated[str, Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")]
     revision: Annotated[int, Field(ge=1)] = 1
