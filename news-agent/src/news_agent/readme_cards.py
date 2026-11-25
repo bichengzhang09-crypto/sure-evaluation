@@ -1,60 +1,45 @@
-"""Linked feature cards for GitHub's horizontally scrollable README."""
+"""Compact release announcements for the repository README."""
 
 from html import escape
-from textwrap import wrap
+import re
 
 from .contract import Entry
-from .web import pipeline_brief, task_label
+from .web import METRICS, task_label
 
 PAGES = "https://bichengzhang09-crypto.github.io/sure-evaluation/"
-PALETTES = (
-    ("#eff9e7", "#d9f1e8", "#b7d9c5", "#22594a"),
-    ("#edf8ff", "#dfe9fb", "#c1d6e9", "#345775"),
-    ("#fff5e3", "#fae4de", "#e8cfc1", "#794d3d"),
-    ("#f6f2ff", "#e8e5f9", "#d7cfea", "#584d78"),
-    ("#edf8f6", "#d8edf1", "#bad8df", "#315e68"),
-)
+def short_summary(value: str) -> str:
+    return re.split(r"(?<=[.!?])\s+", value.strip(), maxsplit=1)[0]
 
 
-def lines(value: str, width: int, limit: int, y: int, leading: int) -> str:
-    rows = [line for paragraph in value.splitlines() for line in wrap(paragraph, width)]
-    if len(rows) > limit:
-        rows = rows[:limit]
-        rows[-1] = rows[-1].rstrip(".") + "…"
-    return "".join(f'<tspan x="26" y="{y + i * leading}">{escape(row)}</tspan>'
-                   for i, row in enumerate(rows))
+def metric_labels(entry: Entry) -> str:
+    labels = [METRICS.get(metric, metric.upper()) for metric in entry.support.metrics]
+    if len(labels) <= 5:
+        return " · ".join(labels)
+    return " · ".join(labels[:4]) + f" · +{len(labels) - 4} more"
 
 
-def tile(entry: Entry, brief: str, palette) -> str:
-    start, end, edge, ink = palette
-    tasks = " · ".join(task_label(t) for t in entry.support.tasks)
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="398" height="264" viewBox="0 0 398 264">
-  <title>{escape(entry.title)}</title>
-  <defs><linearGradient id="wash" x2="1" y2="1"><stop stop-color="{start}"/><stop offset="1" stop-color="{end}"/></linearGradient></defs>
-  <rect width="398" height="264" fill="#fff"/>
-  <rect x="7" y="8" width="384" height="248" rx="22" fill="url(#wash)" stroke="{edge}"/>
-  <g font-family="Arial, Helvetica, sans-serif" fill="{ink}">
-    <text font-size="12" font-weight="700">{lines(tasks, 27, 1, 37, 0)}</text>
-    <text x="369" y="37" text-anchor="end" font-size="12">{entry.published_at:%d %b %Y}</text>
-    <text font-size="22" font-weight="700">{lines(entry.title, 29, 2, 71, 24)}</text>
-    <text font-size="14">{lines(entry.summary, 47, 3, 119, 18)}</text>
-    <path d="M26 169h346" stroke="{edge}"/>
-    <text font-size="13" font-weight="600">{lines(brief, 45, 3, 189, 16)}</text>
-    <text x="26" y="241" font-size="12" font-weight="700">View commit ↗</text>
-    <text x="369" y="241" text-anchor="end" font-size="12" font-family="monospace">{entry.evidence.source_commit[:7]}</text>
-  </g>
-</svg>
-'''
+def announcement(entry: Entry) -> str:
+    metrics = metric_labels(entry)
+    tasks = " · ".join(task_label(task) for task in entry.support.tasks)
+    routes = len(entry.support.pipeline_ids)
+    full = f"./docs/news/index.md#{escape(entry.id, quote=True)}"
+    return f'''<table border="1" bordercolor="#d0d7de" cellpadding="20" cellspacing="0" width="100%" bgcolor="#ffffff">
+<tr><td>
+<p><sub><strong>SURE / RECENT SUPPORT</strong> &nbsp;·&nbsp; {entry.published_at.strftime('%d %b %Y')}</sub></p>
+<h2>{escape(entry.title)}</h2>
+<p>{escape(short_summary(entry.summary))}</p>
+<table border="0" cellpadding="5" cellspacing="0" width="100%">
+<tr><td width="25%"><sub><strong>METRICS</strong></sub></td><td><strong>{escape(metrics)}</strong></td></tr>
+<tr><td><sub><strong>PIPELINES</strong></sub></td><td><strong>{routes} exact route{'s' if routes != 1 else ''}</strong></td></tr>
+<tr><td><sub><strong>TASKS</strong></sub></td><td><strong>{escape(tasks)}</strong></td></tr>
+</table>
+<p><a href="{full}"><strong>Read full announcement →</strong></a></p>
+</td></tr>
+</table>'''
 
 
 def readme_board(entries: list[Entry]) -> tuple[str, dict[str, str]]:
-    links = []
-    assets = {}
-    for i, entry in enumerate(entries):
-        path = f"docs/news/cards/{entry.id}.svg"
-        brief = pipeline_brief(entry)
-        assets[path] = tile(entry, brief, PALETTES[i % len(PALETTES)])
-        alt = escape(" · ".join((entry.title, entry.summary, " ".join(brief.splitlines()))))
-        links.append(f'<a href="{escape(entry.links.source_change)}"><img src="./{path}" width="398" alt="{alt}"></a>')
-    strip = "<pre>" + "".join(links) + "</pre>" if links else "No releases yet."
-    return f"## Recently supported\n\n{strip}\n\n[Explore all updates on GitHub Pages ↗]({PAGES})\n", assets
+    if not entries:
+        return "No releases yet.\n", {}
+    updates = "\n\n".join(announcement(entry) for entry in entries)
+    return f"{updates}\n\n<p><sub><a href=\"{PAGES}\">View announcement history ↗</a></sub></p>\n", {}

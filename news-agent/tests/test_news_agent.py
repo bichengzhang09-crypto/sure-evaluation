@@ -120,9 +120,11 @@ def test_english_page_and_readme_boundaries(facts, copy):
     output = render([entry], readme)
     validate_output({"README.md": readme}, output, lambda p: (ROOT / p).is_file())
     assert outside_block(readme) == outside_block(output["README.md"])
-    strip = output["README.md"].split("<pre>", 1)[1].split("</pre>", 1)[0]
-    assert strip.count("<a href=") == strip.count("<img ") == 1
-    assert f'{entry.links.source_change}"><img src="./docs/news/cards/ear-1.svg"' in strip
+    assert "SURE / RECENT SUPPORT" in output["README.md"]
+    assert "METRICS" in output["README.md"]
+    assert "PIPELINES" in output["README.md"]
+    assert "TASKS" in output["README.md"]
+    assert output["README.md"].count("Read full announcement") == 1
     assert all(pipeline_id in output["docs/news/index.md"] for pipeline_id in IDS)
     assert '<a id="ear-1">' in output["docs/news/index.md"]
 
@@ -262,8 +264,7 @@ def test_only_five_recent_entries_are_in_readme(facts, copy):
     for i, entry in enumerate(entries):
         entry.id = f"entry-{i}"
     output = render(entries, START + "\n" + END)
-    for i in range(7):
-        assert (f'cards/entry-{i}.svg' in output["README.md"]) == (i >= 2)
+    assert output["README.md"].count("Read full announcement") == 5
     assert output["docs/news/index.md"].count('<a id="') == 7
 
 
@@ -453,8 +454,8 @@ def test_revision_keeps_history_and_hides_old_entry_from_readme(facts, copy):
     revision = original.model_copy(deep=True)
     revision.id, revision.revision, revision.supersedes = "ear-1-revision-2", 2, "ear-1"
     output = render([original, revision], START + "\n" + END)
-    assert 'cards/ear-1.svg' not in output["README.md"]
-    assert 'cards/ear-1-revision-2.svg' in output["README.md"]
+    assert "#ear-1\"" not in output["README.md"]
+    assert "#ear-1-revision-2\"" in output["README.md"]
     assert output["docs/news/index.html"].count('<article class="release"') == 1
     assert 'id="ear-1-route-1"' in output["docs/news/index.html"]
     assert 'id="ear-1"' in output["docs/news/index.md"]
