@@ -7,6 +7,14 @@ from .contract import Entry
 from .web import METRICS, pipeline_brief, task_label
 
 PAGES = "https://bichengzhang09-crypto.github.io/sure-evaluation/"
+PR_NUMBERS = {
+    "3853dab1db5d7d44691b25a6620932742a1c0a50": 49,
+    "c1bc96cf865baef07e37f702a8286d3a6c68a5a2": 47,
+    "549eb711483e7c4e515479864bca8e0abd558572": 44,
+    "137fbcc8b89b8c96ca10e641d409808c22165435": 38,
+    "abfdd68801cce39e28a27ccfb9335deee091a27f": 40,
+    "204ffe814fa7b0797e8471d80916339d1dfd0690": 39,
+}
 
 
 def _lines(value: str, width: int, limit: int) -> list[str]:
@@ -22,6 +30,14 @@ def _metric_labels(entry: Entry) -> str:
     if len(labels) <= 5:
         return " · ".join(labels)
     return " · ".join(labels[:4]) + f" · +{len(labels) - 4} more"
+
+
+def _pr_url(entry: Entry) -> str:
+    repository = entry.links.source_change.rsplit("/commit/", 1)[0]
+    number = PR_NUMBERS.get(entry.evidence.source_commit)
+    if number is None:
+        return entry.links.source_change
+    return f"{repository}/pull/{number}"
 
 
 def _text_rows(values: list[str], x: int, y: int, size: int, fill: str,
@@ -41,22 +57,25 @@ def tile(entry: Entry, number: int) -> str:
     brief = _lines(pipeline_brief(entry), 96, 2)
     metrics = _metric_labels(entry)
     tasks = " · ".join(task_label(task) for task in entry.support.tasks)
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="760" height="258" viewBox="0 0 760 258" role="img" aria-labelledby="title desc">
+    pr_number = PR_NUMBERS.get(entry.evidence.source_commit)
+    pr_label = f"PR #{pr_number} ↗" if pr_number else "SOURCE ↗"
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="760" height="280" viewBox="0 0 760 280" role="img" aria-labelledby="title desc">
 <title id="title">{escape(entry.title)}</title>
 <desc id="desc">{escape(entry.summary)}</desc>
-<rect x="1" y="1" width="758" height="256" rx="14" fill="#ffffff" stroke="#d4d9df" stroke-width="2"/>
+<rect x="1" y="1" width="758" height="278" rx="14" fill="#ffffff" stroke="#d4d9df" stroke-width="2"/>
 <rect x="24" y="0" width="72" height="4" rx="2" fill="#111827"/>
 <g font-family="Arial, Helvetica, sans-serif">
-  <text x="28" y="31" fill="#68717d" font-size="11" font-weight="700" letter-spacing="2">SURE / RECENT SUPPORT</text>
+  <text x="28" y="31" fill="#68717d" font-size="11" font-weight="700" letter-spacing="2">{number:02d} · NEW SUPPORT</text>
   <text x="732" y="31" text-anchor="end" fill="#68717d" font-size="11">{entry.published_at:%d %b %Y}</text>
-  {_text_rows(title, 28, 75, 27, '#111827', 700, 29, 'Georgia,Times New Roman,serif')}
-  {_text_rows(summary, 28, 124 if len(title) == 1 else 139, 14, '#3f4752', 400, 20)}
-  <line x1="28" y1="164" x2="732" y2="164" stroke="#e1e5e9"/>
-  <text x="28" y="188" fill="#68717d" font-size="10" font-weight="700" letter-spacing="1.4">METRICS</text>
-  <text x="105" y="188" fill="#111827" font-size="12" font-weight="700">{escape(metrics)}</text>
-  <text x="28" y="211" fill="#68717d" font-size="10" font-weight="700" letter-spacing="1.4">PIPELINE</text>
-  {_text_rows(brief, 105, 211, 12, '#111827', 600, 17)}
-  <text x="732" y="239" text-anchor="end" fill="#68717d" font-size="10">{escape(tasks)} · {len(entry.support.pipeline_ids):02d} route{'s' if len(entry.support.pipeline_ids) != 1 else ''} · DETAILS ↗</text>
+  {_text_rows(title, 28, 77, 29, '#111827', 700, 31, 'Georgia,Times New Roman,serif')}
+  {_text_rows(summary, 28, 126 if len(title) == 1 else 144, 14, '#3f4752', 400, 20)}
+  <line x1="28" y1="168" x2="732" y2="168" stroke="#e1e5e9"/>
+  <text x="28" y="193" fill="#68717d" font-size="10" font-weight="700" letter-spacing="1.4">METRICS</text>
+  <text x="112" y="193" fill="#111827" font-size="13" font-weight="700">{escape(metrics)}</text>
+  <text x="28" y="217" fill="#68717d" font-size="10" font-weight="700" letter-spacing="1.4">PIPELINE</text>
+  {_text_rows(brief, 112, 217, 12, '#111827', 600, 17)}
+  <text x="28" y="264" fill="#68717d" font-size="10">{escape(tasks)} · {len(entry.support.pipeline_ids):02d} route{'s' if len(entry.support.pipeline_ids) != 1 else ''}</text>
+  <text x="732" y="264" text-anchor="end" fill="#111827" font-size="11" font-weight="700">{escape(pr_label)}</text>
 </g>
 </svg>'''
 
@@ -73,15 +92,18 @@ def readme_board(entries: list[Entry]) -> tuple[str, dict[str, str]]:
         assets[path] = tile(entry, number)
         alt = escape(f"{entry.title} · {entry.summary} · {_metric_labels(entry)}", quote=True)
         cards.append(
-            f'<p style="margin:0 0 16px"><a href="./docs/news/index.md#{escape(entry.id, quote=True)}">'
+            f'<p style="margin:0 0 16px"><a href="{escape(_pr_url(entry), quote=True)}">'
             f'<img src="./{path}" width="760" alt="{alt}"></a></p>'
         )
 
     rail = (
-        '<div style="max-height:980px;overflow-y:auto;padding:16px;'
+        '<div style="position:relative">'
+        '<div style="height:460px;overflow-y:auto;padding:16px 16px 34px;'
         'border:1px solid #d4d9df;border-radius:14px;background:#f7f8fa">\n'
         + "\n".join(cards)
-        + "\n</div>"
+        + '\n</div><div aria-hidden="true" style="position:absolute;right:1px;bottom:1px;left:1px;'
+          'height:72px;border-radius:0 0 13px 13px;pointer-events:none;'
+          'background:linear-gradient(to bottom,rgba(247,248,250,0),#f7f8fa 88%)"></div></div>'
     )
     board = f"## Recently supported\n\n{rail}\n\n[View announcement history ↗]({PAGES})\n"
     return board, assets

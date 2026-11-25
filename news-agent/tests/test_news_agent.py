@@ -122,9 +122,10 @@ def test_english_page_and_readme_boundaries(facts, copy):
     assert outside_block(readme) == outside_block(output["README.md"])
     assert "overflow-y:auto" in output["README.md"]
     assert "docs/news/cards/ear-1.svg" in output["README.md"]
-    assert "SURE / RECENT SUPPORT" in output["docs/news/cards/ear-1.svg"]
+    assert "01 · NEW SUPPORT" in output["docs/news/cards/ear-1.svg"]
     assert "METRICS" in output["docs/news/cards/ear-1.svg"]
     assert "PIPELINE" in output["docs/news/cards/ear-1.svg"]
+    assert "https://github.com/PigeonDan1/sure-evaluation/pull/49" in output["README.md"]
     assert "#ffffff" in output["docs/news/cards/ear-1.svg"]
     assert "#111827" in output["docs/news/cards/ear-1.svg"]
     assert all(pipeline_id in output["docs/news/index.md"] for pipeline_id in IDS)
@@ -457,7 +458,7 @@ def test_revision_keeps_history_and_hides_old_entry_from_readme(facts, copy):
     revision.id, revision.revision, revision.supersedes = "ear-1-revision-2", 2, "ear-1"
     output = render([original, revision], START + "\n" + END)
     assert "#ear-1\"" not in output["README.md"]
-    assert "#ear-1-revision-2\"" in output["README.md"]
+    assert "pull/49\"" in output["README.md"]
     assert output["docs/news/index.html"].count('<article class="release"') == 1
     assert 'id="ear-1-route-1"' in output["docs/news/index.html"]
     assert 'id="ear-1"' in output["docs/news/index.md"]
