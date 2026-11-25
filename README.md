@@ -19,20 +19,9 @@
 
 ## Recently supported
 
-<p><a href="https://bichengzhang09-crypto.github.io/sure-evaluation/#latest-support"><img src="./docs/news/readme-rail.svg" width="820" alt="Latest evaluation support. Open the live announcement rail for independent scrolling."></a></p>
+<pre><a href="https://github.com/PigeonDan1/sure-evaluation/pull/47"><img src="./docs/news/readme-cards/ear-1-scoring.svg" width="398" alt="EAR-1 challenge scoring · Score EAR-1 submissions for speaker diarization with DER and Mandarin speaker-attributed ASR with cpCER. · cpCER · DER"></a><a href="https://github.com/PigeonDan1/sure-evaluation/pull/44"><img src="./docs/news/readme-cards/fd-bench.svg" width="398" alt="FD-Bench dialogue timing · Evaluate full-duplex dialogue timing by measuring response start, early reply, and interruption behavior. · EIT · ERT · FSED · IRD"></a><a href="https://github.com/PigeonDan1/sure-evaluation/pull/38"><img src="./docs/news/readme-cards/slu-judge.svg" width="398" alt="SLU answer judging · Score spoken-language understanding answers against a custom rubric with an API-based LLM judge. · LLM_JUDGE"></a><a href="https://github.com/PigeonDan1/sure-evaluation/pull/40"><img src="./docs/news/readme-cards/etc-bench.svg" width="398" alt="ETC-Bench transcript scoring · Canonicalize equivalent transcript forms in 12 languages before CER or WER scoring. · CER · WER"></a><a href="https://github.com/PigeonDan1/sure-evaluation/pull/39"><img src="./docs/news/readme-cards/openbench-se.svg" width="398" alt="OpenBench speech enhancement · Evaluate enhanced speech for intelligibility, spectral distortion, and predicted quality with optional metrics. · DNSMOS_BAK · DNSMOS_P808 · DNSMOS_SIG · ESTOI · +11 more"></a></pre>
 
-<details><summary>Open source PRs for these releases</summary>
-
-<ul>
-<li><a href="https://github.com/PigeonDan1/sure-evaluation/pull/47">EAR-1 challenge scoring · PR ↗</a></li>
-<li><a href="https://github.com/PigeonDan1/sure-evaluation/pull/44">FD-Bench dialogue timing · PR ↗</a></li>
-<li><a href="https://github.com/PigeonDan1/sure-evaluation/pull/38">SLU answer judging · PR ↗</a></li>
-<li><a href="https://github.com/PigeonDan1/sure-evaluation/pull/40">ETC-Bench transcript scoring · PR ↗</a></li>
-<li><a href="https://github.com/PigeonDan1/sure-evaluation/pull/39">OpenBench speech enhancement · PR ↗</a></li>
-</ul>
-</details>
-
-[Open the live announcement rail ↗](https://bichengzhang09-crypto.github.io/sure-evaluation/#latest-support)
+[View announcement history ↗](https://bichengzhang09-crypto.github.io/sure-evaluation/)
 
 <!-- SURE-NEWS:END -->
 
