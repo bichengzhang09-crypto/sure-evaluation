@@ -1,9 +1,12 @@
 """Self-contained visual release notes from the same validated announcement facts."""
 
+import re
 from html import escape
 from importlib.resources import files
+from pathlib import Path
 
 from .contract import Entry
+from .git import git
 
 TASK_NAMES = {"sd": "Speaker diarization", "sa_asr": "Speaker-attributed ASR"}
 METRICS = {"der": "DER", "cpcer": "cpCER"}
@@ -15,6 +18,7 @@ PR_NUMBERS = {
     "abfdd68801cce39e28a27ccfb9335deee091a27f": 40,
     "204ffe814fa7b0797e8471d80916339d1dfd0690": 39,
 }
+MERGE_PR = re.compile(r"^Merge pull request #(\d+) from ")
 ZH_COPY = {
     "ear-1-scoring": {
         "title": "EAR-1 挑战赛评分支持",
@@ -75,6 +79,21 @@ def pr_url(entry: Entry) -> str:
     repository = entry.links.source_change.rsplit("/commit/", 1)[0]
     number = PR_NUMBERS.get(entry.evidence.source_commit)
     return f"{repository}/pull/{number}" if number else entry.links.source_change
+
+
+def register_pr_numbers(root: Path, entries: list[Entry]) -> None:
+    """Discover upstream PR numbers from merge subjects before rendering cards."""
+    for entry in entries:
+        commit = entry.evidence.source_commit
+        if commit in PR_NUMBERS:
+            continue
+        try:
+            subject = git(root, "show", "-s", "--format=%s", commit).strip()
+        except RuntimeError:
+            continue
+        match = MERGE_PR.match(subject)
+        if match:
+            PR_NUMBERS[commit] = int(match.group(1))
 
 
 def link(label: str, url: str, css: str = "") -> str:

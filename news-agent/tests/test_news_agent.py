@@ -23,7 +23,7 @@ from news_agent.kimi_client import KimiClient, read_stream
 from news_agent.publisher import allowed, local_write, preview, publish, validate_output
 from news_agent.renderer import END, START, outside_block, render, replace_block
 from news_agent.state import State, job_key, locked
-from news_agent.web import render_page
+from news_agent.web import pr_url, register_pr_numbers, render_page
 
 from news_test_helpers import AGENT, IDS, ROOT, commit
 
@@ -138,6 +138,17 @@ def test_english_page_and_readme_boundaries(facts, copy):
     assert "#ffffff" in output["docs/news/cards/ear-1.svg"]
     assert all(pipeline_id in output["docs/news/index.md"] for pipeline_id in IDS)
     assert '<a id="ear-1">' in output["docs/news/index.md"]
+
+
+def test_pr_number_is_discovered_from_merge_commit(facts, copy, monkeypatch):
+    entry = entry_for(facts, copy)
+    entry.evidence.source_commit = "a" * 40
+    monkeypatch.setattr(
+        "news_agent.web.git",
+        lambda *args: "Merge pull request #123 from contributor/new-route\n",
+    )
+    register_pr_numbers(ROOT, [entry])
+    assert pr_url(entry).endswith("/pull/123")
 
 
 def test_visual_page_escapes_source_labels_and_links(facts, copy):

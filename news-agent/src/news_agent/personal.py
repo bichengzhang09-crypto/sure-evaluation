@@ -17,6 +17,7 @@ from .kimi_client import KimiClient
 from .publisher import local_write, validate_output
 from .renderer import render
 from .state import State, locked
+from .web import register_pr_numbers
 
 SOURCE = "PigeonDan1/sure-evaluation"
 PERSONAL = "bichengzhang09-crypto/sure-evaluation"
@@ -73,6 +74,7 @@ def candidates(base, head, entries):
 
 
 def publish_batch(config, head, entries, new):
+    register_pr_numbers(head.root, [*entries, *new])
     output = render(entries + new, head.read("README.md"))
     for entry in new:
         validate_entry(entry, config.checkout, SOURCE)
