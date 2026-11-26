@@ -32,7 +32,9 @@ Guide followed:
 - Node manifest: yes / no / n/a
 - `node_env.yaml`: yes / no / n/a
 - Node README follows `docs/node_readme_template.md`: yes / no / n/a
-- Catalog generator and `docs/pipeline_catalog.jsonl`: yes / no / n/a
+- Catalog regenerated: yes / no / n/a
+- Catalog discovery task or curated bundle changed: yes / no / n/a
+- Documentation coverage checked against `docs/contributing.md`: root EN/ZH READMEs, task guides/index, task/node READMEs, and generated atlas updated as applicable; explain any n/a
 
 ## Validation
 
@@ -45,7 +47,9 @@ Paste exact commands run:
 For route or metric PRs, include one exact `pipeline_id` check:
 
 ```bash
+# sure-eval metric routes ... --json
 # sure-eval metric describe ... --pipeline-id ...
+# sure-eval env setup --pipeline ... --dry-run --json
 # sure-eval metric run --pipeline ...
 ```
 

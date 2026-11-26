@@ -111,6 +111,59 @@ def test_metric_describe_outputs_route_backed_pipeline_json(tmp_path: Path) -> N
     assert payload["executor"] == "sure_eval.evaluation.tasks.asr.pipeline.evaluate_asr_files"
 
 
+def test_metric_routes_lists_exact_language_and_metric_variants() -> None:
+    result = CliRunner().invoke(
+        app,
+        ["metric", "routes", "asr", "--language", "zh", "--metric", "cer", "--json"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["schema"] == "sure.metric.routes.v1"
+    assert payload["count"] == 6
+    assert payload["default_pipeline_id"] == (
+        "asr.zh.cer.wetext_norm_zh_itn_v1.wenet_cer_v1"
+    )
+    assert {route["pipeline_id"] for route in payload["routes"]} == {
+        "asr.zh.cer.wetext_norm_zh_itn_v1.wenet_cer_v1",
+        "asr.zh.cer.aispeech_norm_zh_v1.wenet_cer_v1",
+        "asr.zh.cer.canonical_itn_zh_v2.token_cer_v1",
+        "asr.zh.cer.giga_norm_chn_v1.wenet_cer_v1",
+        "asr.zh.cer.xnorm_zh_v1.wenet_cer_v1",
+        "asr.zh.cer.etc_canonicalization_zh_v1.wenet_cer_v1",
+    }
+    assert all(route["language"] == "zh" for route in payload["routes"])
+    assert all(route["metric"] == "cer" for route in payload["routes"])
+
+
+def test_metric_routes_exposes_kws_input_contract_variants() -> None:
+    result = CliRunner().invoke(
+        app,
+        ["metric", "routes", "kws", "--metric", "macro-recall", "--json"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["metric"] == "macro_recall"
+    assert {route["selectors"]["input_mode"] for route in payload["routes"]} == {
+        "sure_json",
+        "wekws_score_ctc",
+        "wekws_frame_score",
+    }
+    assert sum(route["default"] for route in payload["routes"]) == 1
+
+
+def test_metric_routes_requires_language_for_templated_pipeline_ids() -> None:
+    result = CliRunner().invoke(
+        app,
+        ["metric", "routes", "tts", "--metric", "spk_sim", "--json"],
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert "pass --language" in payload["message"]
+
+
 def test_metric_describe_can_select_asr_pipeline_id(tmp_path: Path) -> None:
     runner = CliRunner()
     pipeline_path = tmp_path / "asr_canonical_pipeline.json"
@@ -122,7 +175,7 @@ def test_metric_describe_can_select_asr_pipeline_id(tmp_path: Path) -> None:
             "describe",
             "asr",
             "--pipeline-id",
-            "asr.cs.mer.canonical_itn_cs_v1.token_mer_v1",
+            "asr.cs.mer.canonical_itn_cs_v2.token_mer_v1",
             "--output",
             str(pipeline_path),
             "--json",
@@ -134,7 +187,7 @@ def test_metric_describe_can_select_asr_pipeline_id(tmp_path: Path) -> None:
     assert payload["metric"] == "mer"
     assert payload["requested_metric"] == "mer"
     assert payload["metrics"] == ["mer"]
-    assert payload["pipeline_id"] == "asr.cs.mer.canonical_itn_cs_v1.token_mer_v1"
+    assert payload["pipeline_id"] == "asr.cs.mer.canonical_itn_cs_v2.token_mer_v1"
     assert payload["computation_node_ids"] == ["normalization/canonical_itn", "scoring/token_mer"]
     assert payload["route_config_path"] == "src/sure_eval/evaluation/tasks/asr/routes.yaml"
     assert "internal_executor_metric" not in json.dumps(payload, ensure_ascii=False)
@@ -188,6 +241,33 @@ def test_metric_run_uses_exact_asr_pipeline_id_selectors(tmp_path: Path) -> None
     report_payload = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
     assert report_payload["pipeline_id"] == pipeline_id
     assert report_payload["pipeline_trace"][0]["node_id"] == "normalization/aispeech_norm"
+
+
+def test_metric_run_rejects_tampered_pipeline_identity(tmp_path: Path) -> None:
+    from sure_eval.evaluation.cli_adapters import build_pipeline_spec
+
+    pipeline_path = tmp_path / "pipeline.json"
+    pipeline = build_pipeline_spec(
+        "asr", pipeline_id="asr.en.wer.whisper_norm_english_v1.wenet_wer_v1"
+    )
+    pipeline["computation_node_ids"] = ["scoring/wenet_cer"]
+    pipeline_path.write_text(json.dumps(pipeline), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "metric",
+            "run",
+            "--pipeline",
+            str(pipeline_path),
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Pipeline identity mismatch for computation_node_ids" in result.stdout
 
 
 def test_metric_run_executes_pipeline_file_and_writes_outputs(tmp_path: Path) -> None:
@@ -638,7 +718,7 @@ def test_metric_run_executes_kws_macro_recall_pipeline(tmp_path: Path) -> None:
     description_payload = json.loads(pipeline_path.read_text(encoding="utf-8"))
     assert description_payload["metric"] == "macro_recall"
     assert description_payload["pipeline_id"] == (
-        "kws.any.macro_recall.conversion_kws_sure_json_to_samples_v1.wekws_det_v1"
+        "kws.any.macro_recall.conversion_kws_sure_json_to_samples_v2.wekws_det_v2"
     )
 
     run_result = runner.invoke(
@@ -652,8 +732,9 @@ def test_metric_run_executes_kws_macro_recall_pipeline(tmp_path: Path) -> None:
             str(reference_jsonl),
             "--sample-output",
             str(sample_output),
-            "--macro-recall-false-alarms",
-            "0",
+            "--target-fa-per-hour",
+            "0.1",
+            "--include-roc",
             "--output-dir",
             str(output_dir),
             "--json",
@@ -666,8 +747,11 @@ def test_metric_run_executes_kws_macro_recall_pipeline(tmp_path: Path) -> None:
     assert payload["score"] == 0.5
     report_payload = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
     assert report_payload["score"] == 0.5
-    assert report_payload["details"]["results"]["accuracy"]["score"] == pytest.approx(2 / 3)
-    assert report_payload["details"]["results"]["macro-recall"]["score"] == 0.5
+    results = report_payload["details"]["results"]
+    assert "accuracy" not in results
+    assert results["macro_recall"]["score"] == 0.5
+    assert results["auc"]["score"] == 0.5
+    assert report_payload["details"]["summary"]["target_fa_per_hour"] == .1
 
 
 def test_metric_run_human_mode_prints_environment_note(tmp_path: Path) -> None:
@@ -1346,3 +1430,50 @@ def test_metric_run_executes_tse_exact_speaker_pipeline_id(
     assert payload["pipeline_id"] == pipeline_id
     report_payload = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
     assert report_payload["pipeline_trace"][0]["node_id"] == "scoring/ecapa_tdnn_sim"
+
+
+def test_kws_pipeline_settings_are_preserved_and_cli_overrides_them(tmp_path: Path) -> None:
+    from sure_eval.evaluation.cli_adapters import build_pipeline_spec
+
+    runner = CliRunner()
+    spec = build_pipeline_spec('kws')
+    assert spec['run_args']['target_fa_per_hour'] == .1
+    spec['run_args'].update(target_fa_per_hour=1.0, include_roc=True, match_tolerance_sec=.025)
+    pipeline = tmp_path / 'pipeline.json'
+    pipeline.write_text(json.dumps(spec))
+    ref, out = tmp_path / 'ref.jsonl', tmp_path / 'out.json'
+    _write_jsonl(ref, [{'key': 'hi', 'expected': True, 'expected_keyword': 'A'},
+                       {'key': 'lo', 'expected': True, 'expected_keyword': 'A'},
+                       {'key': 'n', 'expected': False, 'duration': 3600}])
+    out.write_text(json.dumps([{'key': key, 'keyword': 'A', 'score': score}
+                              for key, score in [('hi', .9), ('lo', .7), ('n', .8)]]))
+    for overrides, expected_score, expected_target, expected_roc in [
+        ([], 1, 1, True),
+        (['--target-fa-per-hour', '.1', '--no-include-roc'], .5, .1, False),
+    ]:
+        output_dir = tmp_path / str(expected_target)
+        result = runner.invoke(app, ['metric', 'run', '--pipeline', str(pipeline),
+            '--reference-jsonl', str(ref), '--sample-output', str(out),
+            '--output-dir', str(output_dir), '--json', *overrides])
+        assert result.exit_code == 0, result.stdout
+        report = json.loads((output_dir / 'report.json').read_text())
+        assert report['score'] == expected_score
+        assert report['details']['summary']['target_fa_per_hour'] == expected_target
+        assert report['details']['summary']['match_tolerance_sec'] == .025
+        assert ('roc_curve' in report['details']['results']) == expected_roc
+
+
+def test_kws_rejects_old_pipeline_identity_and_removed_accuracy(tmp_path: Path) -> None:
+    from sure_eval.evaluation.cli_adapters import build_pipeline_spec
+
+    runner = CliRunner()
+    spec = build_pipeline_spec('kws')
+    spec['pipeline_id'] = spec['pipeline_id'].replace('_v2', '_v1')
+    pipeline = tmp_path / 'old.json'
+    pipeline.write_text(json.dumps(spec))
+    result = runner.invoke(app, ['metric', 'run', '--pipeline', str(pipeline),
+                                 '--output-dir', str(tmp_path / 'out')])
+    assert result.exit_code != 0
+    result = runner.invoke(app, ['metric', 'describe', 'kws', '--metric', 'accuracy',
+                                 '--output', str(tmp_path / 'accuracy.json')])
+    assert result.exit_code != 0

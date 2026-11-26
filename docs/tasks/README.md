@@ -9,16 +9,25 @@ from the concrete `pipeline_id`. Generated descriptions also expose relative
 `task_config_path` / `route_config_path`, `script_entrypoint`, and `executor`
 fields so users and agents can trace a route back to implementation code.
 
-For a machine-readable catalog of every metric → pipeline → node mapping, see [Pipeline Catalog](../pipeline_catalog.md).
+Use `sure-eval metric routes <task> ...` for live route discovery. For the
+committed machine-readable inventory of registered atomic routes and curated
+multi-metric bundles, see [Pipeline Catalog](../pipeline_catalog.md).
 
 - [ASR — Automatic Speech Recognition](./asr.md)
 - [S2TT — Speech-to-Text Translation](./s2tt.md)
 - [SD — Speaker Diarization](./sd.md)
+- [SV — Speaker Verification](./sv.md)
 - [SA-ASR — Speaker-Aware ASR](./sa_asr.md)
 - [TTS — Text-to-Speech](./tts.md)
+- [TTA — Text-to-Audio](./tta.md)
 - [VC — Voice Conversion](./vc.md)
 - [SE — Speech Enhancement](./se.md)
+- [RIR — RIR Estimation and Spatial Audio](./rir.md)
 - [TSE — Target Speaker Extraction](./tse.md)
 - [Classification / SER / GR](./classification.md)
 - [KWS — Keyword Spotting](./kws.md)
+- [VAD — Voice Activity Detection](./vad.md)
+- [FULL_DUPLEX — Full-Duplex Dialogue Timing](./full_duplex.md)
+- [DOA — Direction of Arrival](./doa.md)
+- [LID — Spoken Language Identification](./lid.md)
 - [SLU — Spoken Language Understanding](./slu.md)

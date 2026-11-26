@@ -20,7 +20,7 @@ from sure_eval.evaluation.scripts.contracts import (
 def describe_pipeline(
     *, language: str | None = None, metric: str | None = None, pipeline_id: str | None = None
 ):
-    manifest, manifest_path, routes_path, route, executor_metric = _select_route(
+    manifest, manifest_path, routes_path, route, _executor_metric = _select_route(
         language=language, metric=metric, pipeline_id=pipeline_id
     )
     route_language = route.get("language") or language or "n/a"
@@ -109,6 +109,8 @@ def _executor_selectors_from_route(route: dict) -> dict[str, str]:
     for node_id in route.get("nodes") or ():
         if node_id == "normalization/wetext_norm":
             selectors["normalizer"] = f"wetext:{_wetext_profile_from_pipeline_id(route['pipeline_id'])}"
+        elif node_id == "normalization/giga_norm":
+            selectors["normalizer"] = f"giga:{_giga_profile_from_pipeline_id(route['pipeline_id'])}"
         elif node_id == "normalization/whisper_norm":
             selectors["normalizer"] = "whisper"
         elif node_id == "normalization/aispeech_norm":
@@ -118,6 +120,12 @@ def _executor_selectors_from_route(route: dict) -> dict[str, str]:
             selectors["normalizer"] = "canonical"
         elif node_id == "normalization/punctuation_strip_norm":
             selectors["normalizer"] = "punctuation_strip"
+        elif node_id == "normalization/nemo_norm":
+            selectors["normalizer"] = "nemo:ar_tn"
+        elif node_id == "normalization/xnorm":
+            selectors["normalizer"] = f"xnorm:{route.get('language')}"
+        elif node_id == "normalization/etc_canonicalization":
+            selectors["normalizer"] = f"etc:{route.get('language')}"
         elif node_id in {"scoring/wenet_cer", "scoring/wenet_wer", "scoring/wenet_mer"}:
             selectors["scorer"] = "wenet"
         elif node_id == "scoring/token_cer":
@@ -144,3 +152,12 @@ def _wetext_profile_from_pipeline_id(pipeline_id: str) -> str:
             if profile:
                 return profile
     raise ValueError(f"Cannot infer wetext_norm profile from pipeline_id={pipeline_id!r}")
+
+
+def _giga_profile_from_pipeline_id(pipeline_id: str) -> str:
+    for component in str(pipeline_id).split(".")[3:]:
+        if component.startswith("giga_norm_"):
+            profile = re.sub(r"_v[0-9]+$", "", component.removeprefix("giga_norm_"))
+            if profile:
+                return profile.upper()
+    raise ValueError(f"Cannot infer giga_norm profile from pipeline_id={pipeline_id!r}")

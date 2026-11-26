@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shlex
 import subprocess
 import sys
+import tempfile
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -15,10 +18,13 @@ from rich.console import Console
 from rich.table import Table
 
 import sure_eval
+from sure_eval.evaluation.checksums import verify_file_sha256
 from sure_eval.evaluation.cli_adapters import (
     build_pipeline_spec,
+    list_metric_routes,
     read_json,
     run_pipeline_spec,
+    validate_pipeline_identity,
 )
 from sure_eval.evaluation.agent_plan import build_agent_plan, write_agent_plan
 from sure_eval.evaluation.cache import get_cache_root
@@ -32,16 +38,18 @@ from sure_eval.evaluation.env_check import (
     raise_if_environment_failed,
 )
 
-metric_app = typer.Typer(help="Describe and run deterministic evaluation pipelines")
+metric_app = typer.Typer(help="Discover, describe, and run versioned evaluation pipelines")
 env_app = typer.Typer(help="Inspect and prepare optional node-local environments")
 agent_app = typer.Typer(help="Plan route selection and environment readiness for agents")
-app = typer.Typer(help="SURE-EVAL deterministic speech and audio evaluation")
+app = typer.Typer(help="SURE-EVAL versioned system evaluation")
 console = Console()
 
 
 @metric_app.command("describe")
 def describe_metric_pipeline(
-    task: str = typer.Argument(..., help="Task name, e.g. asr, s2tt, kws, classification, slu"),
+    task: str = typer.Argument(
+        ..., help="Task name, e.g. asr, lid, s2tt, kws, classification, slu"
+    ),
     language: Optional[str] = typer.Option(None, "--language", "-l", help="Task language/profile"),
     metric: Optional[str] = typer.Option(None, "--metric", "-m", help="Metric name"),
     metrics: Optional[str] = typer.Option(
@@ -90,6 +98,44 @@ def describe_metric_pipeline(
     console.print(table)
 
 
+@metric_app.command("routes")
+def list_routes(
+    task: str = typer.Argument(..., help="Task name, e.g. asr, lid, tts, kws, classification"),
+    language: Optional[str] = typer.Option(None, "--language", "-l", help="Task language/profile"),
+    metric: Optional[str] = typer.Option(None, "--metric", "-m", help="Canonical metric name"),
+    json_output: bool = typer.Option(False, "--json", help="Print machine-readable JSON"),
+) -> None:
+    """List exact registered pipeline IDs without loading metric runtimes."""
+
+    try:
+        payload = list_metric_routes(task, language=language, metric=metric)
+    except Exception as exc:
+        _print_error(exc, json_output=json_output)
+        raise typer.Exit(1) from exc
+    if json_output:
+        sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+        return
+
+    selection = " / ".join(
+        str(value) for value in (payload["task"], payload["language"], payload["metric"]) if value
+    )
+    table = Table(title=f"Metric Routes: {selection} ({payload['count']})")
+    table.add_column("Default", justify="center")
+    table.add_column("Pipeline ID", style="cyan")
+    table.add_column("Computation nodes")
+    table.add_column("Required inputs")
+    table.add_column("Setup")
+    for route in payload["routes"]:
+        table.add_row(
+            "*" if route["default"] else "",
+            str(route["pipeline_id"]),
+            " -> ".join(route["computation_node_ids"]),
+            ", ".join(route["required_roles"]),
+            ", ".join(route["setup_node_ids"]) or "none",
+        )
+    console.print(table)
+
+
 @metric_app.command("run")
 def run_metric_pipeline(
     pipeline: Path = typer.Option(
@@ -98,6 +144,9 @@ def run_metric_pipeline(
     output_dir: Path = typer.Option(..., "--output-dir", help="Expected output directory"),
     ref_file: Optional[str] = typer.Option(None, "--ref-file", help="Reference key-text file"),
     hyp_file: Optional[str] = typer.Option(None, "--hyp-file", help="Hypothesis key-text file"),
+    sessions_file: Optional[str] = typer.Option(
+        None, "--sessions-file", help="Session metadata JSON (EAR-1 sessions.json)"
+    ),
     src_file: Optional[str] = typer.Option(None, "--src-file", help="Source key-text file"),
     prompt_jsonl: Optional[str] = typer.Option(
         None, "--prompt-jsonl", help="SLU prompt JSONL file"
@@ -106,10 +155,28 @@ def run_metric_pipeline(
         None, "--label-spec", help="Classification label spec path or id"
     ),
     reference_jsonl: Optional[str] = typer.Option(
-        None, "--reference-jsonl", help="KWS reference JSONL"
+        None, "--reference-jsonl", help="KWS/VAD/DOA/full-duplex reference JSONL"
     ),
     sample_output: Optional[str] = typer.Option(
-        None, "--sample-output", help="KWS model output JSONL"
+        None, "--sample-output", help="KWS/VAD/SV/DOA/full-duplex model output JSONL"
+    ),
+    dimension: Optional[str] = typer.Option(
+        None, "--dimension", help="Canonical DOA dimension: 2d or 3d"
+    ),
+    threshold_deg: Optional[float] = typer.Option(
+        None, "--threshold-deg", help="DOA angular gating threshold"
+    ),
+    aggregation: Optional[str] = typer.Option(
+        None, "--aggregation", help="DOA aggregation: macro_recording or micro"
+    ),
+    timestamp_tolerance_sec: Optional[float] = typer.Option(
+        None, "--timestamp-tolerance-sec", help="Canonical timestamp tolerance"
+    ),
+    prediction_activity_policy: Optional[str] = typer.Option(
+        None, "--prediction-activity-policy", help="Canonical prediction activity policy"
+    ),
+    trial_manifest: Optional[str] = typer.Option(
+        None, "--trial-manifest", help="SV evaluator-owned trial manifest"
     ),
     wekws_label_file: Optional[str] = typer.Option(
         None, "--wekws-label-file", help="WeKWS label file"
@@ -121,17 +188,25 @@ def run_metric_pipeline(
         None, "--wekws-frame-score-file", help="WeKWS frame score file"
     ),
     keyword: Optional[str] = typer.Option(None, "--keyword", help="KWS keyword"),
-    macro_recall_false_alarms: int = typer.Option(
-        0, "--macro-recall-false-alarms", help="False alarm count budget for KWS macro-recall"
+    target_fa_per_hour: Optional[float] = typer.Option(
+        None, "--target-fa-per-hour", help="KWS system false alarms per negative-audio hour (default 0.1)"
+    ),
+    include_roc: Optional[bool] = typer.Option(
+        None, "--include-roc/--no-include-roc", help="Include optional KWS clip ROC/AUC"
+    ),
+    match_tolerance_sec: Optional[float] = typer.Option(
+        None, "--match-tolerance-sec", help="KWS event matching tolerance in seconds (default 1.0)"
     ),
     samples_jsonl: Optional[str] = typer.Option(
-        None, "--samples-jsonl", help="TTS/VC/SE/TSE samples JSONL file"
+        None, "--samples-jsonl", help="TTS/TTA/VC/SE/TSE/RIR samples JSONL file"
     ),
     device: str = typer.Option(
-        "cuda", "--device", help="Device passed to audio metric runtime builders"
+        "cuda", "--device", help="Device passed to audio model runtime builders"
     ),
     cache_dir: Optional[str] = typer.Option(
-        None, "--cache-dir", help="Cache directory for audio metric runtime builders"
+        None,
+        "--cache-dir",
+        help="Cache directory for audio metric runtime builders",
     ),
     validate_env: bool = typer.Option(
         False, "--validate-env", help="Validate selected node-local environments before running"
@@ -150,20 +225,33 @@ def run_metric_pipeline(
             output_dir=str(output_dir),
             ref_file=ref_file,
             hyp_file=hyp_file,
+            sessions_file=sessions_file,
             src_file=src_file,
             prompt_jsonl=prompt_jsonl,
             label_spec=label_spec,
             reference_jsonl=reference_jsonl,
             sample_output=sample_output,
+            dimension=dimension,
+            threshold_deg=threshold_deg,
+            aggregation=aggregation,
+            timestamp_tolerance_sec=timestamp_tolerance_sec,
+            prediction_activity_policy=prediction_activity_policy,
+            trial_manifest=trial_manifest,
             wekws_label_file=wekws_label_file,
             wekws_score_file=wekws_score_file,
             wekws_frame_score_file=wekws_frame_score_file,
             keyword=keyword,
-            macro_recall_false_alarms=macro_recall_false_alarms,
+            target_fa_per_hour=target_fa_per_hour,
+            include_roc=include_roc,
+            match_tolerance_sec=match_tolerance_sec,
             samples_jsonl=samples_jsonl,
             device=device,
             cache_dir=cache_dir,
         )
+        if validate_env:
+            summary["environment_note"] = (
+                "selected node-local environments were validated before execution"
+            )
     except EnvironmentCheckError as exc:
         _print_env_error(exc, json_output=json_output)
         raise typer.Exit(1) from exc
@@ -173,21 +261,30 @@ def run_metric_pipeline(
     if json_output:
         sys.stdout.write(json.dumps(summary, ensure_ascii=False) + "\n")
         return
-    console.print(
-        "[yellow]Environment note:[/yellow] use --validate-env for checks; "
-        "check pyproject.toml or uv.lock in selected node directories."
-    )
+    if validate_env:
+        console.print("[green]Environment:[/green] selected node environments validated.")
+    else:
+        console.print(
+            "[yellow]Environment note:[/yellow] use --validate-env for checks; "
+            "check pyproject.toml or uv.lock in selected node directories."
+        )
     table = Table(title="Metric Run")
     table.add_column("Field", style="cyan")
     table.add_column("Value", style="white")
     table.add_row("status", summary["status"])
     table.add_row("task", summary["task"])
     table.add_row("metric", summary["metric"])
-    table.add_row("score", f"{summary['score']:.6f}")
+    table.add_row("score", _format_score(summary["score"]))
+    if summary["task"] == "FULL_DUPLEX":
+        for field in ("sample_count", "score_is_measured", "measurement_protocol_status"):
+            table.add_row(field, str(summary[field]))
     table.add_row("pipeline_id", summary["pipeline_id"])
     table.add_row("report", summary["report_path"])
     table.add_row("pipeline_description", summary["pipeline_description_path"])
     console.print(table)
+    if summary["task"] == "FULL_DUPLEX":
+        for warning in summary.get("warnings", []):
+            console.print("Warning:", warning, style="yellow", markup=False)
 
 
 def _print_error(exc: Exception, *, json_output: bool) -> None:
@@ -197,6 +294,12 @@ def _print_error(exc: Exception, *, json_output: bool) -> None:
         )
     else:
         console.print(f"[bold red]Error:[/bold red] {exc}")
+
+
+def _format_score(score: object) -> str:
+    if score is None:
+        return "n/a"
+    return f"{float(score):.6f}"
 
 
 def _print_env_error(exc: EnvironmentCheckError, *, json_output: bool) -> None:
@@ -377,6 +480,9 @@ def env_check(
 @env_app.command("setup")
 def env_setup(
     node: Optional[str] = typer.Option(None, "--node", help="Prepare one node id"),
+    pipeline: Optional[Path] = typer.Option(
+        None, "--pipeline", "-p", help="Prepare nodes selected by a pipeline JSON"
+    ),
     task: Optional[str] = typer.Option(
         None, "--task", help="Prepare nodes selected by a task route"
     ),
@@ -400,25 +506,33 @@ def env_setup(
 ) -> None:
     """Prepare node-local environments from node_env.yaml metadata."""
 
-    if sum(bool(value) for value in (node, task, group, all_nodes)) > 1:
-        raise typer.BadParameter("Use only one of --node, --task, --group, or --all")
-    node_ids = _resolve_env_node_ids(
-        node=node,
-        pipeline=None,
-        task=task,
-        language=language,
-        metric=metric,
-        metrics=metrics,
-        group=group,
-        all_nodes=all_nodes,
-    )
-    actions = [_setup_plan_for_node(node_id, no_download=no_download) for node_id in node_ids]
-    if dry_run:
-        payload = {"status": "planned", "dry_run": True, "actions": actions}
-    else:
-        results = [_execute_setup_action(action, force=force) for action in actions]
-        failed = [item for item in results if item["status"] == "failed"]
-        payload = {"status": "failed" if failed else "ok", "dry_run": False, "actions": results}
+    if sum(bool(value) for value in (node, pipeline, task, group, all_nodes)) > 1:
+        raise typer.BadParameter("Use only one of --node, --pipeline, --task, --group, or --all")
+    try:
+        node_ids = _resolve_env_node_ids(
+            node=node,
+            pipeline=pipeline,
+            task=task,
+            language=language,
+            metric=metric,
+            metrics=metrics,
+            group=group,
+            all_nodes=all_nodes,
+        )
+        actions = [_setup_plan_for_node(node_id, no_download=no_download) for node_id in node_ids]
+        if dry_run:
+            payload = {"status": "planned", "dry_run": True, "actions": actions}
+        else:
+            results = [_execute_setup_action(action, force=force) for action in actions]
+            failed = [item for item in results if item["status"] == "failed"]
+            payload = {
+                "status": "failed" if failed else "ok",
+                "dry_run": False,
+                "actions": results,
+            }
+    except Exception as exc:
+        _print_error(exc, json_output=json_output)
+        raise typer.Exit(1) from exc
     if json_output:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
         if payload["status"] == "failed":
@@ -515,14 +629,19 @@ def _setup_plan_for_node(node_id: str, *, no_download: bool) -> dict[str, object
     runtime_type = str(runtime.get("type", "uv"))
     project = str(runtime.get("project", "pyproject.toml"))
     python = runtime.get("python")
+    frozen = bool(runtime.get("frozen", False))
+    post_setup_script = runtime.get("post_setup_script")
     group = str(node_env.get("group") or "")
     command_parts = [f"cd {node_path}"]
     if runtime_type == "uv":
         if python:
             command_parts.append(f"uv venv --python {python}")
-        command_parts.append(
-            "uv sync" if project == "pyproject.toml" else f"uv sync --project {project}"
-        )
+        sync_command = "uv sync" if project == "pyproject.toml" else f"uv sync --project {project}"
+        if frozen:
+            sync_command += " --frozen"
+        command_parts.append(sync_command)
+        if post_setup_script:
+            command_parts.append(f".venv/bin/python {shlex.quote(str(post_setup_script))}")
     elif runtime_type == "pip":
         specs = package_install_specs(node_env)
         if specs:
@@ -539,14 +658,23 @@ def _setup_plan_for_node(node_id: str, *, no_download: bool) -> dict[str, object
     downloads = []
     for model in models:
         if isinstance(model, dict):
-            downloads.append(
-                {
-                    "id": model.get("id"),
-                    "provider": model.get("provider"),
-                    "target": model.get("target"),
-                    "env": model.get("env"),
-                }
-            )
+            download = {
+                "id": model.get("id"),
+                "provider": model.get("provider"),
+                "target": model.get("target"),
+                "env": model.get("env"),
+            }
+            for key in (
+                "revision",
+                "layout",
+                "source",
+                "sha256",
+                "md5",
+                "auto_download",
+            ):
+                if model.get(key):
+                    download[key] = model[key]
+            downloads.append(download)
     return {
         "node_id": node_id,
         "node_path": str(node_path),
@@ -554,6 +682,8 @@ def _setup_plan_for_node(node_id: str, *, no_download: bool) -> dict[str, object
         "runtime": runtime_type,
         "python": python,
         "project": project,
+        "frozen": frozen,
+        "post_setup_script": post_setup_script,
         "build_script": runtime.get("build_script"),
         "command": " && ".join(command_parts),
         "packages": package_install_specs(node_env),
@@ -561,7 +691,11 @@ def _setup_plan_for_node(node_id: str, *, no_download: bool) -> dict[str, object
         "downloads": [] if no_download else downloads,
         "node_env": str(checker.node_env_path(node_id)) if node_env else "",
         "status": "planned",
-        "note": "Checkpoint downloads are declared but not executed in this command yet.",
+        "note": (
+            "Opt-in automatic downloads run after environment setup."
+            if not no_download and any(item.get("auto_download") for item in downloads)
+            else "Checkpoint downloads are declared but not executed in this command yet."
+        ),
     }
 
 
@@ -594,6 +728,34 @@ def _download_plan_for_node(node_id: str) -> dict[str, object]:
     }
 
 
+def _execute_automatic_download_plan(plan: dict[str, object]) -> dict[str, object]:
+    """Download supported assets while leaving explicitly manual assets untouched."""
+
+    result = dict(plan)
+    assets = []
+    for asset in plan.get("assets", []):
+        if not isinstance(asset, dict):
+            continue
+        executed = dict(asset)
+        if not executed.get("auto_download"):
+            executed["status"] = "skipped"
+            executed["message"] = "automatic download is not enabled for this asset"
+        elif str(executed.get("provider") or "").lower() == "manual":
+            executed["status"] = "skipped"
+            executed["message"] = "manual asset; use its target/env override"
+        else:
+            try:
+                _download_asset(executed)
+            except Exception as exc:
+                executed["status"] = "failed"
+                executed["message"] = str(exc)
+            else:
+                executed["status"] = "ok"
+        assets.append(executed)
+    result["assets"] = assets
+    return result
+
+
 def _execute_download_plan(plan: dict[str, object]) -> dict[str, object]:
     result = dict(plan)
     assets = []
@@ -617,26 +779,103 @@ def _download_asset(asset: dict[str, object]) -> None:
     provider = str(asset.get("provider") or "").lower()
     model_id = str(asset.get("id") or "")
     target_path = asset.get("target_path")
+    revision = str(asset.get("revision") or "")
+    layout = str(asset.get("layout") or "")
     if provider == "huggingface":
         from huggingface_hub import snapshot_download
 
         kwargs = {"repo_id": model_id}
+        if revision:
+            kwargs["revision"] = revision
         if target_path:
             kwargs["local_dir"] = str(Path(str(target_path)).parent)
         snapshot_download(**kwargs)
+        _verify_downloaded_asset(asset)
         return
     if provider == "modelscope":
         from modelscope import snapshot_download
 
         kwargs = {"model_id": model_id}
-        if target_path:
+        if revision:
+            kwargs["revision"] = revision
+        if target_path and layout == "local_dir":
+            kwargs["local_dir"] = str(Path(str(target_path)).parent)
+        elif target_path:
             kwargs["cache_dir"] = str(Path(str(target_path)).parents[1])
         snapshot_download(**kwargs)
+        _verify_downloaded_asset(asset)
+        return
+    if provider == "url":
+        source = str(asset.get("source") or model_id)
+        if not source.startswith(("https://", "http://")):
+            raise RuntimeError("a URL download requires an http(s) source")
+        if not target_path:
+            raise RuntimeError("a URL download requires target")
+        target = Path(str(target_path))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_file():
+            _verify_downloaded_asset(asset)
+            return
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                dir=target.parent,
+                prefix=f".{target.name}.",
+                suffix=".part",
+                delete=False,
+            ) as handle:
+                temporary_path = Path(handle.name)
+                with urllib.request.urlopen(source, timeout=60) as response:
+                    from tqdm import tqdm
+
+                    headers = getattr(response, "headers", {})
+                    total = int(headers.get("Content-Length") or 0) if headers else 0
+                    with tqdm(
+                        total=total,
+                        unit="B",
+                        unit_scale=True,
+                        desc=f"Downloading {target.name}",
+                        disable=not total,
+                    ) as progress:
+                        while chunk := response.read(1024 * 1024):
+                            handle.write(chunk)
+                            progress.update(len(chunk))
+            verification_asset = dict(asset)
+            verification_asset["target_path"] = str(temporary_path)
+            _verify_downloaded_asset(verification_asset)
+            temporary_path.replace(target)
+        except Exception:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+            raise
         return
     raise RuntimeError(
         f"provider {provider!r} is manual or unsupported for automated download; "
         "use the target/env fields from node_env.yaml."
     )
+
+
+def _verify_downloaded_asset(asset: dict[str, object]) -> None:
+    expected_sha256 = str(asset.get("sha256") or "").lower()
+    expected_md5 = str(asset.get("md5") or "").lower()
+    target_path = Path(str(asset.get("target_path") or ""))
+    if expected_sha256:
+        try:
+            verify_file_sha256(target_path, expected_sha256)
+        except RuntimeError as exc:
+            raise RuntimeError(f"downloaded asset {exc}") from exc
+        return
+    if expected_md5:
+        digest = hashlib.md5()
+        with target_path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        actual_md5 = digest.hexdigest()
+        if actual_md5 != expected_md5:
+            raise RuntimeError(
+                f"downloaded asset checksum mismatch for {target_path}: "
+                f"expected md5 {expected_md5}, got {actual_md5}"
+            )
 
 
 def _resolve_env_node_ids(
@@ -662,13 +901,13 @@ def _resolve_env_node_ids(
 
 
 def _node_ids_from_pipeline(pipeline: dict[str, object]) -> list[str]:
+    expected = validate_pipeline_identity(pipeline)
     known = set(iter_known_node_ids())
     node_ids = []
-    for item in pipeline.get("nodes") or ():
-        if isinstance(item, dict):
-            node_id = str(item.get("node_id") or "")
-            if node_id in known and node_id not in node_ids:
-                node_ids.append(node_id)
+    for value in expected.get("computation_node_ids") or ():
+        node_id = str(value)
+        if node_id in known and node_id not in node_ids:
+            node_ids.append(node_id)
     return node_ids
 
 
@@ -719,6 +958,22 @@ def _execute_setup_action(action: dict[str, object], *, force: bool) -> dict[str
             result["status"] = "skipped"
             result["message"] = f"unsupported runtime type: {runtime}"
             return result
+
+        if not action.get("no_download") and any(
+            item.get("auto_download") for item in action.get("downloads", [])
+        ):
+            download_result = _execute_automatic_download_plan(
+                _download_plan_for_node(str(action["node_id"]))
+            )
+            result["downloads"] = download_result.get("assets", [])
+            failed_downloads = [
+                asset
+                for asset in result["downloads"]
+                if isinstance(asset, dict) and asset.get("status") == "failed"
+            ]
+            if failed_downloads:
+                message = failed_downloads[0].get("message") or "unknown download error"
+                raise RuntimeError(f"automatic asset download failed: {message}")
     except Exception as exc:
         result["status"] = "failed"
         result["message"] = str(exc)
@@ -743,9 +998,25 @@ def _execute_uv_setup(
         if python:
             command.extend(["--python", str(python)])
         commands.append(command)
-    commands.append(["uv", "sync"])
+    sync_command = ["uv", "sync"]
+    project = str(action.get("project") or "pyproject.toml")
+    if project != "pyproject.toml":
+        sync_command.extend(["--project", project])
+    if action.get("frozen"):
+        sync_command.append("--frozen")
+    commands.append(sync_command)
     for command in commands:
         _run_logged(command, cwd=node_path, log_file=log_file)
+
+    post_setup_script = action.get("post_setup_script")
+    if post_setup_script:
+        script_path = node_path / str(post_setup_script)
+        if not script_path.is_file():
+            raise RuntimeError(f"post-setup script is missing: {script_path}")
+        post_command = [str(venv_dir / "bin" / "python"), str(script_path)]
+        if force:
+            post_command.append("--force")
+        _run_logged(post_command, cwd=node_path, log_file=log_file)
 
 
 def _execute_binary_setup(action: dict[str, object], *, node_path: Path, log_file: Path) -> None:

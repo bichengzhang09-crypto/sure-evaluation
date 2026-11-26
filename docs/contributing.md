@@ -21,11 +21,34 @@ category applies.
 - Keep `metric` canonical, such as `cer`, `wer`, `spk_sim`, or `dnsmos`.
 - Put method or compatibility selectors in `execution_metrics`.
 - Select same-metric variants with exact `pipeline_id`.
+- `sure-eval metric routes` must discover every registered atomic route; do not
+  maintain a second hand-written list for route variants.
 - For every node/tool/version change, update the node README using
   [Node README Template](./node_readme_template.md).
 - Do not change a default route without saying so in the PR.
 - Do not commit model weights, checkpoints, `.venv`, caches, reports, secrets,
   or private absolute paths.
+
+## Documentation Coverage
+
+Include documentation updates in the same PR as the behavior they describe:
+
+- For a new task, update the supported-task tables in both root READMEs,
+  the [task index](./tasks/README.md), the public task guide, and the
+  task-local README. The homepage tables must cover all supported tasks and
+  link to their guides; only list capabilities implemented in that branch.
+- For a new metric or route, update the existing task guide and task-local
+  README, the affected node READMEs, and the metric summary in both root
+  READMEs when applicable. State the exact route, required inputs, units,
+  aggregation, defaults, environment/checkpoint setup, and material limits.
+- For changed behavior, correct examples and explanations that depend on it.
+  Keep the English and Chinese homepage descriptions consistent. Link to
+  detailed task/node guides instead of duplicating every route on the homepage.
+- After route changes, regenerate `docs/pipeline_catalog.jsonl` and the atlas
+  artifacts with the commands below. Do not edit generated listings by hand.
+- In the PR description, identify the documentation updated, or explain why
+  no documentation changes are needed. Check relative links and run any new
+  command examples against the selected route.
 
 ## Common Checks
 
@@ -43,7 +66,12 @@ After route changes, regenerate and inspect the catalog:
 ```bash
 PYTHONPATH=src uv run python scripts/generate_pipeline_catalog.py
 git diff -- docs/pipeline_catalog.jsonl
+python scripts/generate_pipeline_atlas.py
 ```
+
+The generator discovers atomic rows from `routes.yaml`. Only new task
+registration or a deliberately curated multi-metric bundle should require a
+generator code change.
 
 For heavyweight nodes, also run:
 
@@ -51,6 +79,38 @@ For heavyweight nodes, also run:
 sure-eval env check --node <node-id>
 sure-eval env setup --node <node-id> --dry-run
 ```
+
+For route-facing changes, also verify exact selection:
+
+```bash
+sure-eval metric routes <task> --language <lang> --metric <metric> --json
+sure-eval metric describe <task> --pipeline-id <pipeline-id> --output pipeline.json
+sure-eval env setup --pipeline pipeline.json --dry-run --json
+```
+
+## CI Gates
+
+Required PR checks are intentionally portable: they must pass on a clean GitHub
+runner without model checkpoints, secrets, or node-local virtual environments.
+They run `ruff`, whitespace checks, catalog/atlas freshness, package build/install
+smoke tests, CLI smoke tests, and the test suite excluding checkpoint-backed
+environment assertions.
+
+Use this local approximation before opening a broad PR:
+
+```bash
+uv run --extra dev ruff check .
+git diff --check
+uv run --extra dev --extra audio --extra canonical pytest -q --ignore=tests/test_evaluation_env_check.py
+uv run --extra dev --extra audio --extra canonical pytest tests/test_evaluation_env_check.py -q -k "in_process or pip_runtime or dry_run or doctor or cache_dir or se_pip_runtime_nodes_are_declared"
+uv run --extra dev --extra canonical python scripts/generate_pipeline_catalog.py
+python scripts/generate_pipeline_atlas.py
+git diff --exit-code docs/pipeline_catalog.jsonl docs/atlas/index.html docs/atlas/pipeline_atlas.svg docs/atlas/pipeline_atlas_dark.svg
+```
+
+Checkpoint-backed node-local checks live in the optional Heavy Nodes workflow.
+Run it manually with `run_real_checks=true` only on a prepared self-hosted
+runner labeled `sure-eval-heavy`.
 
 ## Open The PR
 

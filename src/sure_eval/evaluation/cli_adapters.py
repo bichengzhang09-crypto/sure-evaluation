@@ -8,9 +8,11 @@ from typing import Any
 
 from sure_eval.evaluation.scripts import describe_pipeline, run_task
 from sure_eval.evaluation.scripts.contracts import (
-    load_task_manifest,
+    NODES_ROOT,
     load_task_routes,
+    load_yaml,
 )
+from sure_eval.evaluation.pipeline_identity import canonical_metric
 
 ROLE_TO_CLI_ARG = {
     "ref": "ref_file",
@@ -20,11 +22,13 @@ ROLE_TO_CLI_ARG = {
     "label_spec": "label_spec",
     "reference_jsonl": "reference_jsonl",
     "sample_output": "sample_output",
+    "trial_manifest": "trial_manifest",
     "wekws_label_file": "wekws_label_file",
     "wekws_score_file": "wekws_score_file",
     "wekws_frame_score_file": "wekws_frame_score_file",
     "keyword": "keyword",
     "samples_jsonl": "samples_jsonl",
+    "sessions": "sessions_file",
 }
 
 TASK_ALIASES = {
@@ -39,9 +43,13 @@ ENVIRONMENT_NOTE = (
     "Check selected node directories for pyproject.toml or uv.lock when preparing a run."
 )
 
-AUDIO_SAMPLE_TASKS = {"tts", "vc", "se", "speech_enhancement", "tse"}
+AUDIO_SAMPLE_TASKS = {"tts", "vc", "se", "speech_enhancement", "tse", "tta", "rir"}
 SE_TASKS = {"se", "speech_enhancement"}
 SE_DEFAULT_METRICS = ("si-sdr", "stoi", "pesq", "dnsmos", "wv-mos", "utmos")
+SV_DEFAULT_METRICS = ("eer", "min_dcf")
+PIPELINE_SCHEMA = "sure.metric.pipeline.v1"
+ROUTE_LIST_SCHEMA = "sure.metric.routes.v1"
+OPTIONAL_RUNTIME_TYPES = {"binary", "pip", "uv"}
 
 
 def build_pipeline_spec(
@@ -65,20 +73,24 @@ def build_pipeline_spec(
         pipeline_id=pipeline_id,
     )
     description = describe_pipeline(normalized_task, **describe_kwargs)
-    manifest, _ = load_task_manifest(TASK_ALIASES.get(normalized_task, normalized_task))
     routes, _ = load_task_routes(TASK_ALIASES.get(normalized_task, normalized_task))
     route_choices = _route_choices(routes, language=description.language)
     selected_routes = _match_selected_routes(route_choices, description)
-    selected_route = selected_routes[0]
     node_slots = _node_slots(
-        description.node_ids, selected_route=selected_route, route_choices=route_choices
+        description.node_ids, selected_routes=selected_routes, route_choices=route_choices
     )
     run_args = {ROLE_TO_CLI_ARG.get(role, role): None for role in description.required_roles}
     required_roles = list(description.required_roles)
     if normalized_task in AUDIO_SAMPLE_TASKS:
         required_roles = ["samples_jsonl"]
         run_args.setdefault("samples_jsonl", None)
+    if normalized_task == "kws":
+        run_args.update(target_fa_per_hour=0.1, include_roc=False, match_tolerance_sec=1.0)
     run_args["output_dir"] = None
+
+    if "scoring/llm_judge" in description.node_ids:
+        run_args["llm_config"] = None
+
     execution_metrics = tuple(description.execution_metrics) or _requested_metrics(
         normalized_task,
         metric=metric,
@@ -86,7 +98,7 @@ def build_pipeline_spec(
     )
 
     payload = {
-        "schema": "sure.metric.pipeline.v1",
+        "schema": PIPELINE_SCHEMA,
         "task": normalized_task,
         "task_alias": task,
         "language": description.language,
@@ -116,6 +128,271 @@ def build_pipeline_spec(
     return payload
 
 
+def list_metric_routes(
+    task: str,
+    *,
+    language: str | None = None,
+    metric: str | None = None,
+) -> dict[str, Any]:
+    """List exact atomic routes registered for one task selection."""
+
+    requested_task = normalize_task(task)
+    route_task = TASK_ALIASES.get(requested_task, requested_task)
+    routes, _ = load_task_routes(route_task)
+    requested_language = _normalize_language_filter(language)
+    requested_metric = canonical_metric(metric) if metric else None
+    language_sensitive = bool(routes.get("language_sensitive", False))
+    if not language_sensitive and requested_language not in {None, "n/a"}:
+        raise ValueError(f"Task {task!r} is language-independent; omit --language or use any")
+    matched: list[tuple[dict[str, Any], str]] = []
+    unresolved_template = False
+
+    for configured_route in routes.get("routes") or ():
+        route = dict(configured_route)
+        if not _route_matches_task_alias(route, requested_task):
+            continue
+        if (
+            requested_metric
+            and canonical_metric(str(route.get("metric") or "")) != requested_metric
+        ):
+            continue
+        route_language = _concrete_route_language(
+            route,
+            requested_language=requested_language,
+            language_sensitive=language_sensitive,
+        )
+        if route_language is None:
+            unresolved_template = True
+            continue
+        if not _route_matches_language(route, requested_language):
+            continue
+        pipeline_id = str(route["pipeline_id"]).format(language=route_language)
+        matched.append((route, pipeline_id))
+
+    if unresolved_template and requested_language is None:
+        raise ValueError(
+            f"Task {task!r} has language-templated routes; pass --language to obtain exact "
+            "pipeline IDs"
+        )
+    if not matched:
+        filters = []
+        if language:
+            filters.append(f"language={language}")
+        if metric:
+            filters.append(f"metric={metric}")
+        suffix = f" ({', '.join(filters)})" if filters else ""
+        raise ValueError(f"No configured routes found for task {task!r}{suffix}")
+
+    # Full-duplex chooses one primary metric for the task. Keep that task-level
+    # default visible even when discovery is filtered to another timing metric.
+    task_default_pipeline_id = (
+        str(build_pipeline_spec(task)["pipeline_id"]) if route_task == "full_duplex" else None
+    )
+    entries: list[dict[str, Any]] = []
+    for route, pipeline_id in matched:
+        spec = build_pipeline_spec(task, pipeline_id=pipeline_id)
+        default_pipeline_id = task_default_pipeline_id or _default_pipeline_id(
+            task,
+            language=str(spec.get("language") or "n/a"),
+            metric=str(spec["metric"]),
+        )
+        environments = _declared_route_environments(spec["computation_node_ids"])
+        entries.append(
+            {
+                "default": pipeline_id == default_pipeline_id,
+                "pipeline_id": pipeline_id,
+                "language": spec["language"],
+                "metric": spec["metric"],
+                "execution_metrics": list(spec["metrics"]),
+                "computation_node_ids": list(spec["computation_node_ids"]),
+                "required_roles": list(spec["required_roles"]),
+                "optional_roles": list(spec["optional_roles"]),
+                "input_contract": route.get("input_contract"),
+                "selectors": _route_selectors(route),
+                "environments": environments,
+                "setup_node_ids": [
+                    item["node_id"] for item in environments if item["setup_required"]
+                ],
+                "route_config_path": spec["route_config_path"],
+            }
+        )
+
+    default_ids = (
+        [task_default_pipeline_id]
+        if task_default_pipeline_id
+        else [entry["pipeline_id"] for entry in entries if entry["default"]]
+    )
+    return {
+        "schema": ROUTE_LIST_SCHEMA,
+        "task": requested_task,
+        "language": requested_language,
+        "metric": requested_metric,
+        "count": len(entries),
+        "default_pipeline_id": default_ids[0] if len(default_ids) == 1 else None,
+        "default_pipeline_ids": default_ids,
+        "routes": entries,
+    }
+
+
+def validate_pipeline_identity(pipeline: dict[str, Any]) -> dict[str, Any]:
+    """Rebuild and validate the route identity declared by a pipeline JSON."""
+
+    if pipeline.get("schema") != PIPELINE_SCHEMA:
+        raise ValueError(f"Unsupported pipeline schema: {pipeline.get('schema')!r}")
+    task = str(pipeline.get("task_alias") or pipeline.get("task") or "").strip()
+    pipeline_id = str(pipeline.get("pipeline_id") or "").strip()
+    if not task or not pipeline_id:
+        raise ValueError("Pipeline JSON requires task and pipeline_id")
+
+    if pipeline.get("pipeline_kind") == "bundle":
+        metrics = [str(item) for item in pipeline.get("metrics") or ()]
+        if len(metrics) < 2:
+            raise ValueError("Bundle pipeline JSON requires at least two metrics")
+        expected = build_pipeline_spec(
+            task,
+            language=str(pipeline.get("language") or "n/a"),
+            metric=",".join(metrics),
+        )
+    else:
+        expected = build_pipeline_spec(task, pipeline_id=pipeline_id)
+
+    comparisons = {
+        "pipeline_id": str(pipeline.get("pipeline_id") or ""),
+        "pipeline_kind": str(pipeline.get("pipeline_kind") or ""),
+        "member_pipeline_ids": list(pipeline.get("member_pipeline_ids") or ()),
+        "computation_node_ids": list(pipeline.get("computation_node_ids") or ()),
+    }
+    for field, actual in comparisons.items():
+        expected_value = expected[field]
+        if actual != expected_value:
+            raise ValueError(
+                f"Pipeline identity mismatch for {field}: expected {expected_value!r}, "
+                f"found {actual!r}"
+            )
+
+    actual_node_ids = [
+        str(item.get("node_id") or "")
+        for item in pipeline.get("nodes") or ()
+        if isinstance(item, dict)
+    ]
+    expected_node_ids = [str(item["node_id"]) for item in expected["nodes"]]
+    if actual_node_ids != expected_node_ids:
+        raise ValueError(
+            f"Pipeline identity mismatch for nodes: expected {expected_node_ids!r}, "
+            f"found {actual_node_ids!r}"
+        )
+    for actual_node, expected_node in zip(pipeline.get("nodes") or (), expected["nodes"], strict=True):
+        for field in ("version", "stage"):
+            if field in actual_node and actual_node[field] != expected_node[field]:
+                raise ValueError(
+                    f"Pipeline identity mismatch for node {expected_node['node_id']} {field}: "
+                    f"expected {expected_node[field]!r}, found {actual_node[field]!r}"
+                )
+    for slot in pipeline.get("pipeline") or ():
+        selected = slot.get("selected")
+        selected_node = slot.get("default") if selected == "default" else selected
+        if selected_node != slot.get("default"):
+            raise ValueError(
+                "Exact pipeline JSON cannot switch nodes in place; select the registered "
+                "pipeline_id for the required node chain"
+            )
+    return expected
+
+
+def _normalize_language_filter(language: str | None) -> str | None:
+    if language is None:
+        return None
+    normalized = language.strip().lower().replace("-", "_")
+    return "n/a" if normalized in {"any", "n/a", "none"} else normalized
+
+
+def _route_matches_task_alias(route: dict[str, Any], requested_task: str) -> bool:
+    route_alias = route.get("task_alias")
+    if route_alias is None:
+        return True
+    return normalize_task(str(route_alias)) == requested_task
+
+
+def _route_matches_language(route: dict[str, Any], requested_language: str | None) -> bool:
+    if requested_language is None:
+        return True
+    route_language = route.get("language")
+    if route_language is None:
+        return True
+    return _normalize_language_filter(str(route_language)) == requested_language
+
+
+def _concrete_route_language(
+    route: dict[str, Any],
+    *,
+    requested_language: str | None,
+    language_sensitive: bool,
+) -> str | None:
+    route_language = route.get("language")
+    if route_language is not None:
+        return str(route_language).lower()
+    pipeline_id = str(route.get("pipeline_id") or "")
+    if "{language}" not in pipeline_id:
+        return "n/a"
+    if requested_language and requested_language != "n/a":
+        return requested_language
+    if language_sensitive:
+        return None
+    return "n/a"
+
+
+def _default_pipeline_id(task: str, *, language: str, metric: str) -> str:
+    try:
+        return str(build_pipeline_spec(task, language=language, metric=metric)["pipeline_id"])
+    except (KeyError, TypeError, ValueError):
+        return ""
+
+
+def _route_selectors(route: dict[str, Any]) -> dict[str, Any]:
+    structural_fields = {
+        "aliases",
+        "computation_nodes",
+        "executor",
+        "executor_metric",
+        "family",
+        "input_contract",
+        "internal_executor_metric",
+        "language",
+        "metric",
+        "nodes",
+        "pipeline_id",
+        "task_alias",
+    }
+    return {key: value for key, value in route.items() if key not in structural_fields}
+
+
+def _declared_route_environments(node_ids: list[str]) -> list[dict[str, Any]]:
+    environments: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for node_id in node_ids:
+        if node_id in seen:
+            continue
+        seen.add(node_id)
+        if node_id.startswith("conversion/"):
+            runtime_type = "in_process"
+            node_env: dict[str, Any] = {}
+        else:
+            stage, name = node_id.split("/", 1)
+            node_env_path = NODES_ROOT / stage / name / "node_env.yaml"
+            node_env = load_yaml(node_env_path) if node_env_path.is_file() else {}
+            runtime = node_env.get("runtime") if isinstance(node_env.get("runtime"), dict) else {}
+            runtime_type = str(runtime.get("type") or "in_process")
+        environments.append(
+            {
+                "node_id": node_id,
+                "runtime": runtime_type,
+                "setup_required": runtime_type in OPTIONAL_RUNTIME_TYPES,
+                "group": str(node_env.get("group") or ""),
+            }
+        )
+    return environments
+
+
 def run_pipeline_spec(
     pipeline: dict[str, Any],
     *,
@@ -127,12 +404,21 @@ def run_pipeline_spec(
     label_spec: str | None = None,
     reference_jsonl: str | None = None,
     sample_output: str | None = None,
+    dimension: str | None = None,
+    threshold_deg: float | None = None,
+    aggregation: str | None = None,
+    timestamp_tolerance_sec: float | None = None,
+    prediction_activity_policy: str | None = None,
+    trial_manifest: str | None = None,
     wekws_label_file: str | None = None,
     wekws_score_file: str | None = None,
     wekws_frame_score_file: str | None = None,
     keyword: str | None = None,
-    macro_recall_false_alarms: int = 0,
+    target_fa_per_hour: float | None = None,
+    include_roc: bool | None = None,
+    match_tolerance_sec: float | None = None,
     samples_jsonl: str | None = None,
+    sessions_file: str | None = None,
     device: str = "cuda",
     cache_dir: str | None = None,
 ) -> dict[str, Any]:
@@ -141,8 +427,16 @@ def run_pipeline_spec(
     if not output_dir:
         raise ValueError("output_dir is required")
     validate_pipeline_selection(pipeline)
+    validate_pipeline_identity(pipeline)
     task = normalize_task(str(pipeline["task"]))
     kwargs = _run_kwargs_from_pipeline(pipeline)
+
+    effective_llm_config = (pipeline.get("run_args") or {}).get("llm_config")
+    if effective_llm_config is not None:
+        if "scoring/llm_judge" not in [node.get("node_id") for node in pipeline.get("nodes") or ()]:
+            raise ValueError("run_args.llm_config is only accepted by an LLM Judge pipeline")
+        kwargs["llm_config"] = effective_llm_config
+
     cli_values = {
         "ref_file": ref_file,
         "hyp_file": hyp_file,
@@ -151,16 +445,39 @@ def run_pipeline_spec(
         "label_spec": label_spec,
         "reference_jsonl": reference_jsonl,
         "sample_output": sample_output,
+        "dimension": dimension,
+        "threshold_deg": threshold_deg,
+        "aggregation": aggregation,
+        "timestamp_tolerance_sec": timestamp_tolerance_sec,
+        "prediction_activity_policy": prediction_activity_policy,
+        "trial_manifest": trial_manifest,
         "wekws_label_file": wekws_label_file,
         "wekws_score_file": wekws_score_file,
         "wekws_frame_score_file": wekws_frame_score_file,
         "keyword": keyword,
         "samples_jsonl": samples_jsonl,
+        "sessions_file": sessions_file,
     }
+    if task != "doa":
+        for key in (
+            "dimension",
+            "threshold_deg",
+            "aggregation",
+            "timestamp_tolerance_sec",
+            "prediction_activity_policy",
+        ):
+            cli_values.pop(key, None)
     kwargs.update({key: value for key, value in cli_values.items() if value is not None})
     if task == "kws":
-        kwargs["macro_recall_false_alarms"] = macro_recall_false_alarms
-    if task in AUDIO_SAMPLE_TASKS:
+        for key, value in {"target_fa_per_hour": target_fa_per_hour,
+                           "include_roc": include_roc,
+                           "match_tolerance_sec": match_tolerance_sec}.items():
+            if value is not None:
+                kwargs[key] = value
+    uses_audio_samples = task in AUDIO_SAMPLE_TASKS or "samples_jsonl" in (
+        pipeline.get("required_roles") or ()
+    )
+    if uses_audio_samples:
         kwargs.update(
             _audio_sample_kwargs(
                 task, pipeline, samples_jsonl=samples_jsonl, device=device, cache_dir=cache_dir
@@ -168,11 +485,11 @@ def run_pipeline_spec(
         )
     kwargs["output_dir"] = output_dir
     _validate_required_args(pipeline, kwargs)
-    if task in AUDIO_SAMPLE_TASKS:
+    if uses_audio_samples:
         kwargs.pop("samples_jsonl", None)
     report = run_task(task, **kwargs)
     output_path = Path(output_dir)
-    return {
+    summary = {
         "status": "ok",
         "task": report.task,
         "metric": report.metric,
@@ -184,6 +501,31 @@ def run_pipeline_spec(
         "environment_note": ENVIRONMENT_NOTE,
         "node_config_paths": _node_config_paths(pipeline),
     }
+    if task == "full_duplex":
+        selected_result = report.details["results"][report.metric]
+        sample_count = selected_result["sample_count"]
+        protocol_status = report.details.get("measurement_protocol", {}).get("status", "missing")
+        warnings = []
+        if sample_count == 0:
+            warnings.append(
+                "No selected timing events were observed. The score 0.0 is the compatibility "
+                "empty-pool value, not a measured 0 ms delay."
+            )
+        if protocol_status != "recorded":
+            warnings.append(
+                f"Measurement protocol provenance is {protocol_status}; timing scores may not "
+                "be comparable across recordings. See report.details.measurement_protocol."
+            )
+        summary.update(
+            sample_count=sample_count,
+            status="ok" if sample_count > 0 else "no_events",
+            score_is_measured=sample_count > 0,
+            measurement_protocol_status=protocol_status,
+            warnings=warnings,
+        )
+        if warnings:
+            summary["warning"] = " ".join(warnings)
+    return summary
 
 
 def validate_pipeline_selection(pipeline: dict[str, Any]) -> None:
@@ -252,6 +594,26 @@ def _describe_kwargs(
             kwargs["pipeline_id"] = pipeline_id
         return kwargs
     if task == "kws":
+        kwargs = {"metric": metric or "macro_recall"}
+        if pipeline_id:
+            kwargs["pipeline_id"] = pipeline_id
+        return kwargs
+    if task == "vad":
+        kwargs = {"metric": metric or "f1"}
+        if pipeline_id:
+            kwargs["pipeline_id"] = pipeline_id
+        return kwargs
+    if task == "full_duplex":
+        kwargs = {"metric": metric or "ird"}
+        if pipeline_id:
+            kwargs["pipeline_id"] = pipeline_id
+        return kwargs
+    if task == "doa":
+        kwargs = {"metric": metric or "mae"}
+        if pipeline_id:
+            kwargs["pipeline_id"] = pipeline_id
+        return kwargs
+    if task == "lid":
         kwargs = {"metric": metric or "accuracy"}
         if pipeline_id:
             kwargs["pipeline_id"] = pipeline_id
@@ -266,6 +628,13 @@ def _describe_kwargs(
         return kwargs
     if task == "sd":
         kwargs = {"metric": metric or "der"}
+        if pipeline_id:
+            kwargs["pipeline_id"] = pipeline_id
+        return kwargs
+    if task == "sv":
+        kwargs = {}
+        if metric:
+            kwargs["metrics"] = split_metric_csv(metric)
         if pipeline_id:
             kwargs["pipeline_id"] = pipeline_id
         return kwargs
@@ -299,21 +668,41 @@ def _describe_kwargs(
         if pipeline_id:
             kwargs["pipeline_id"] = pipeline_id
         return kwargs
+    if task == "tta":
+        kwargs = {"language": "n/a"}
+        if metric:
+            kwargs["metrics"] = split_metric_csv(metric)
+        if pipeline_id:
+            kwargs["pipeline_id"] = pipeline_id
+        return kwargs
+    if task == "rir":
+        kwargs = {}
+        if metric:
+            kwargs["metrics"] = split_metric_csv(metric)
+        if pipeline_id:
+            kwargs["pipeline_id"] = pipeline_id
+        return kwargs
     return {}
 
 
 def _route_choices(routes: dict[str, Any], *, language: str | None = None) -> list[dict[str, Any]]:
     choices = []
     for route in routes.get("routes") or ():
+        if language and route.get("language") and route["language"] != language:
+            continue
         route_language = route.get("language") or language or "n/a"
         pipeline_id = route.get("pipeline_id")
         choices.append(
             {
-                "pipeline_id": str(pipeline_id).format(language=route_language) if pipeline_id else None,
+                "pipeline_id": (
+                    str(pipeline_id).format(language=route_language) if pipeline_id else None
+                ),
                 "language": route.get("language"),
                 "metric": route.get("metric"),
                 "nodes": list(route.get("nodes") or ()),
-                "computation_node_ids": list(route.get("computation_nodes") or route.get("nodes") or ()),
+                "computation_node_ids": list(
+                    route.get("computation_nodes") or route.get("nodes") or ()
+                ),
                 "input_contract": route.get("input_contract"),
                 "executor": route.get("executor"),
                 "selectors": {
@@ -339,7 +728,9 @@ def _route_choices(routes: dict[str, Any], *, language: str | None = None) -> li
     return choices
 
 
-def _match_selected_routes(route_choices: list[dict[str, Any]], description) -> list[dict[str, Any]]:
+def _match_selected_routes(
+    route_choices: list[dict[str, Any]], description
+) -> list[dict[str, Any]]:
     if description.member_pipeline_ids:
         return [
             _match_route(route_choices, "pipeline_id", pipeline_id)
@@ -358,13 +749,32 @@ def _match_route(route_choices: list[dict[str, Any]], key: str, value: str) -> d
 def _node_slots(
     node_ids: tuple[str, ...],
     *,
-    selected_route: dict[str, Any],
+    selected_routes: list[dict[str, Any]],
     route_choices: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    selected_route = selected_routes[0] if selected_routes else {}
     route_nodes = selected_route.get("nodes") or list(node_ids)
+    scoring_metrics_by_node: dict[str, list[str]] = {}
+    for route in selected_routes:
+        metric = route.get("metric")
+        if not metric:
+            continue
+        for route_node in route.get("nodes") or ():
+            if str(route_node).startswith("scoring/"):
+                scoring_metrics_by_node.setdefault(str(route_node), []).append(str(metric))
+    scoring_metric_indexes: dict[str, int] = {}
+
+    def slot_metric(node_id: str) -> str | None:
+        candidates = scoring_metrics_by_node.get(node_id, [])
+        index = scoring_metric_indexes.get(node_id, 0)
+        if index < len(candidates):
+            scoring_metric_indexes[node_id] = index + 1
+            return candidates[index]
+        return str(selected_route.get("metric")) if selected_route.get("metric") else None
+
     slots: list[dict[str, Any]] = []
     stage_counts: dict[str, int] = {}
-    for index, node_id in enumerate(node_ids):
+    for node_id in node_ids:
         stage = node_id.split("/", 1)[0]
         stage_counts[stage] = stage_counts.get(stage, 0) + 1
         stage_choices = _stage_choices(stage, route_choices)
@@ -375,13 +785,13 @@ def _node_slots(
                 "selected": "default",
                 "default": node_id,
                 "nullable": stage != "scoring",
-                "metric": selected_route.get("metric") if stage == "scoring" else None,
+                "metric": slot_metric(node_id) if stage == "scoring" else None,
                 "choices": stage_choices or [node_id],
             }
         )
     if not slots and route_nodes:
         stage_counts = {}
-        for index, node_id in enumerate(route_nodes):
+        for node_id in route_nodes:
             stage = node_id.split("/", 1)[0]
             stage_counts[stage] = stage_counts.get(stage, 0) + 1
             slots.append(
@@ -391,7 +801,7 @@ def _node_slots(
                     "selected": "default",
                     "default": node_id,
                     "nullable": stage != "scoring",
-                    "metric": selected_route.get("metric") if stage == "scoring" else None,
+                    "metric": slot_metric(node_id) if stage == "scoring" else None,
                     "choices": _stage_choices(stage, route_choices) or [node_id],
                 }
             )
@@ -423,15 +833,14 @@ def _run_kwargs_from_pipeline(pipeline: dict[str, Any]) -> dict[str, Any]:
     ):
         kwargs["language"] = pipeline["language"]
     if task == "classification":
-        kwargs["task"] = pipeline.get("task_alias") or "classification"
         if pipeline.get("pipeline_id"):
             kwargs["pipeline_id"] = pipeline["pipeline_id"]
-    elif task in {"ser", "gr", "slu"}:
+    elif task in {"ser", "gr", "slu", "lid"}:
         if pipeline.get("pipeline_id"):
             kwargs["pipeline_id"] = pipeline["pipeline_id"]
-    elif task in AUDIO_SAMPLE_TASKS:
-        use_atomic_pipeline_id = (
-            pipeline.get("pipeline_kind") == "atomic" and pipeline.get("pipeline_id")
+    elif task in AUDIO_SAMPLE_TASKS or task == "sv":
+        use_atomic_pipeline_id = pipeline.get("pipeline_kind") == "atomic" and pipeline.get(
+            "pipeline_id"
         )
         metrics = _metrics_from_pipeline(pipeline, task=task)
         if metrics and not use_atomic_pipeline_id:
@@ -448,6 +857,11 @@ def _run_kwargs_from_pipeline(pipeline: dict[str, Any]) -> dict[str, Any]:
         kwargs["metric"] = pipeline["requested_metric"]
     elif pipeline.get("metric"):
         kwargs["metric"] = pipeline["metric"]
+    if task == "kws":
+        for key in ("target_fa_per_hour", "include_roc", "match_tolerance_sec"):
+            value = (pipeline.get("run_args") or {}).get(key)
+            if value is not None:
+                kwargs[key] = value
     return kwargs
 
 
@@ -474,6 +888,8 @@ def _requested_metrics(
         return split_metric_csv(metric)
     if task in SE_TASKS and description_metric == "multi":
         return SE_DEFAULT_METRICS
+    if task == "sv" and description_metric == "multi":
+        return SV_DEFAULT_METRICS
     if description_metric and description_metric != "multi":
         return (description_metric,)
     return ()
@@ -540,18 +956,32 @@ def _audio_sample_kwargs(
             cache_dir=cache_dir,
             transcription_node_id=_semantic_transcription_node_from_pipeline(pipeline),
         )
+    elif task == "tta":
+        from sure_eval.evaluation.audio_runtime import build_tta_runtime
+        from sure_eval.evaluation.audio_samples import load_tta_samples_jsonl
+
+        samples = load_tta_samples_jsonl(samples_jsonl, metrics=metrics)
+        runtime = build_tta_runtime(metrics=metrics, device=device, cache_dir=cache_dir)
+    elif task == "rir":
+        from sure_eval.evaluation.audio_samples import load_rir_samples_jsonl
+
+        samples = load_rir_samples_jsonl(samples_jsonl, metrics=metrics)
+        runtime = {}
     else:
         return {}
-    payload = {
-        "samples": samples,
-        "mos_providers": runtime.get("mos_providers", {}),
-    }
+    payload = {"samples": samples}
+    if "mos_providers" in runtime:
+        payload["mos_providers"] = runtime["mos_providers"]
     if "transcribers" in runtime:
         payload["transcribers"] = runtime["transcribers"]
     if "speaker_providers" in runtime:
         payload["speaker_providers"] = runtime["speaker_providers"]
     if "reference_providers" in runtime:
         payload["reference_providers"] = runtime["reference_providers"]
+    if "providers" in runtime:
+        payload["providers"] = runtime["providers"]
+    elif task == "tta":
+        payload["providers"] = runtime
     return payload
 
 
@@ -570,6 +1000,8 @@ def _metrics_from_pipeline(pipeline: dict[str, Any], *, task: str) -> tuple[str,
         return selected
     if task in SE_TASKS and pipeline.get("metric") == "multi":
         return SE_DEFAULT_METRICS
+    if task == "sv" and pipeline.get("metric") == "multi":
+        return SV_DEFAULT_METRICS
     return ()
 
 

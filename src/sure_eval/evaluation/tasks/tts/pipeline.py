@@ -8,7 +8,9 @@ from statistics import fmean
 from typing import Any
 
 from sure_eval.evaluation.core.types import EvaluationFiles, EvaluationReport, MetricInputContract
-from sure_eval.evaluation.nodes.frontend.funasr_loader_16k_mono import describe_funasr_loader_16k_mono
+from sure_eval.evaluation.nodes.frontend.funasr_loader_16k_mono import (
+    describe_funasr_loader_16k_mono,
+)
 from sure_eval.evaluation.nodes.scoring._audio_quality_dispatch import (
     score_mos_metric,
     score_speaker_metric,
@@ -33,6 +35,7 @@ _TTS_SEMANTIC_TEXT_CONTRACT = MetricInputContract(
 )
 _ZIP_SENTINEL = object()
 _ZH_DEFAULT_SEMANTIC_NORMALIZER = "punctuation_strip"
+_AR_DEFAULT_SEMANTIC_NORMALIZER = "nemo:ar_tn"
 
 
 def evaluate_tts_samples(
@@ -50,7 +53,9 @@ def evaluate_tts_samples(
     if not samples:
         raise ValueError("at least one TTS sample is required")
 
-    requested_metrics = [metric.lower() for metric in (metrics or _default_metrics(samples, prefix="tts"))]
+    requested_metrics = [
+        metric.lower() for metric in (metrics or _default_metrics(samples, prefix="tts"))
+    ]
     language = _common_language([sample.language for sample in samples])
     rows = [_base_row(sample) for sample in samples]
     results: dict[str, dict[str, Any]] = {}
@@ -67,7 +72,9 @@ def evaluate_tts_samples(
         metric_name = semantic_metrics[0]
         expected_metric = _default_semantic_metric("tts", language)
         if metric_name != expected_metric:
-            raise ValueError(f"Metric {metric_name} does not match language {language}; expected {expected_metric}")
+            raise ValueError(
+                f"Metric {metric_name} does not match language {language}; expected {expected_metric}"
+            )
         effective_semantic_normalizer = _effective_semantic_normalizer(
             language=language,
             explicit_normalizer=semantic_normalizer,
@@ -83,7 +90,9 @@ def evaluate_tts_samples(
         )
         semantic_result = _semantic_metric_result(metric_name, semantic)
         semantic_components = _semantic_components(language=language, semantic=semantic)
-        semantic_pipeline_id = build_atomic_pipeline_id("tts", language, metric_name, semantic_components)
+        semantic_pipeline_id = build_atomic_pipeline_id(
+            "tts", language, metric_name, semantic_components
+        )
         semantic_result["pipeline_id"] = semantic_pipeline_id
         semantic_result["computation_node_ids"] = list(component_trace_ids(semantic_components))
         metric_pipeline_ids[metric_name] = semantic_pipeline_id
@@ -115,7 +124,14 @@ def evaluate_tts_samples(
         trace.append(speaker_result)
 
     mos_providers = dict(mos_providers or {})
-    for metric_name in [metric for metric in requested_metrics if metric in {"dnsmos", "wv-mos", "utmos"}]:
+    for metric_name in [
+        metric for metric in requested_metrics if metric in {"dnsmos", "wv-mos", "utmos", "komos"}
+    ]:
+        if metric_name == "komos" and language.lower().replace("_", "-").split("-", 1)[0] not in {
+            "ko",
+            "kor",
+        }:
+            raise ValueError("KOMOS is available only for Korean TTS audio")
         mos_result = _evaluate_mos(
             samples,
             rows,
@@ -229,7 +245,9 @@ def _evaluate_semantic(
                 f"TTS semantic transcriber returned {len(batch_results)} transcript(s) "
                 f"for {len(samples)} sample(s)"
             )
-        batch_node_id = batch_results[0][1].node_id if batch_results else semantic_transcription_node or ""
+        batch_node_id = (
+            batch_results[0][1].node_id if batch_results else semantic_transcription_node or ""
+        )
         if transcription_node_needs_frontend(batch_node_id, language):
             frontend_trace = [
                 describe_funasr_loader_16k_mono(
@@ -241,10 +259,15 @@ def _evaluate_semantic(
             ]
             sample_transcripts = [
                 (transcript, (frontend_node, transcription_node))
-                for frontend_node, (transcript, transcription_node) in _zip_strict(frontend_trace, batch_results)
+                for frontend_node, (transcript, transcription_node) in _zip_strict(
+                    frontend_trace, batch_results
+                )
             ]
         else:
-            sample_transcripts = [(transcript, (transcription_node,)) for transcript, transcription_node in batch_results]
+            sample_transcripts = [
+                (transcript, (transcription_node,))
+                for transcript, transcription_node in batch_results
+            ]
 
     for index, sample in enumerate(samples, start=1):
         if not sample.reference_text:
@@ -302,7 +325,9 @@ def _evaluate_speaker(
     for index, sample in enumerate(samples):
         if not sample.reference_audio:
             continue
-        speaker_rows.append((sample.sample_id or f"utt{index + 1}", sample.prediction_audio, sample.reference_audio))
+        speaker_rows.append(
+            (sample.sample_id or f"utt{index + 1}", sample.prediction_audio, sample.reference_audio)
+        )
         row_indexes.append(index)
     if not speaker_rows:
         raise ValueError("speaker similarity requires reference_audio for at least one sample")
@@ -343,7 +368,7 @@ def _default_metrics(samples: list[TTSSample], *, prefix: str) -> tuple[str, ...
 
 
 def _uses_cer(language: str) -> bool:
-    return language.lower().startswith(("zh", "cmn", "yue"))
+    return language.lower().startswith(("zh", "cmn", "yue", "ar"))
 
 
 def _default_semantic_metric(prefix: str, language: str) -> str:
@@ -353,6 +378,8 @@ def _default_semantic_metric(prefix: str, language: str) -> str:
 def _effective_semantic_normalizer(*, language: str, explicit_normalizer: str | None) -> str | None:
     if explicit_normalizer is not None:
         return explicit_normalizer
+    if language.lower().startswith(("ar", "ara")):
+        return _AR_DEFAULT_SEMANTIC_NORMALIZER
     if _uses_cer(language):
         return _ZH_DEFAULT_SEMANTIC_NORMALIZER
     return None
@@ -426,6 +453,7 @@ def _node_name_for_metric(metric_name: str) -> str:
         "dnsmos": "dnsmos",
         "wv-mos": "wv_mos",
         "utmos": "utmos",
+        "komos": "komos",
     }[metric_name]
 
 

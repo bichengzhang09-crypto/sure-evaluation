@@ -37,6 +37,27 @@ def test_pipeline_catalog_rows_expose_pipeline_identity() -> None:
             assert len(row["execution_metrics"]) == len(row["member_pipeline_ids"])
 
 
+def test_pipeline_catalog_contains_every_discovered_atomic_route() -> None:
+    from scripts.generate_pipeline_catalog import iter_atomic_pipeline_ids
+
+    catalog_ids = {
+        row["pipeline_id"] for row in _catalog_rows() if row["pipeline_kind"] == "atomic"
+    }
+    discovered_ids = {pipeline_id for _, pipeline_id in iter_atomic_pipeline_ids()}
+
+    assert catalog_ids == discovered_ids
+
+
+def test_pipeline_catalog_contains_language_specific_komos_route() -> None:
+    rows = _catalog_rows()
+
+    assert {
+        row["pipeline_id"]
+        for row in rows
+        if row["task_alias"] == "tts" and row["metric"] == "komos"
+    } == {"tts.ko.komos.komos_v1"}
+
+
 def test_pipeline_catalog_has_new_kws_and_sa_asr_identities() -> None:
     rows = _catalog_rows()
     kws_macro_rows = [
@@ -44,18 +65,28 @@ def test_pipeline_catalog_has_new_kws_and_sa_asr_identities() -> None:
     ]
 
     assert {row["pipeline_id"] for row in kws_macro_rows} == {
-        "kws.any.macro_recall.conversion_kws_sure_json_to_samples_v1.wekws_det_v1",
-        "kws.any.macro_recall.conversion_kws_wekws_score_ctc_to_samples_v1.wekws_det_v1",
-        "kws.any.macro_recall.conversion_kws_wekws_frame_score_to_samples_v1.wekws_det_v1",
+        "kws.any.macro_recall.conversion_kws_sure_json_to_samples_v2.wekws_det_v2",
+        "kws.any.macro_recall.conversion_kws_wekws_score_ctc_to_samples_v2.wekws_det_v2",
+        "kws.any.macro_recall.conversion_kws_wekws_frame_score_to_samples_v2.wekws_det_v2",
     }
-    assert {row["execution_metrics"][0] for row in kws_macro_rows} == {"macro-recall"}
+    assert {row["execution_metrics"][0] for row in kws_macro_rows} == {"macro_recall"}
 
-    sa_asr_rows = [row for row in rows if row["task_alias"] == "sa_asr"]
+    sa_asr_rows = [row for row in rows if row["task_alias"] == "sa_asr" and row["metric"] == "cpwer"]
     assert {row["pipeline_id"] for row in sa_asr_rows} == {
         "sa_asr.en.cpwer.conversion_sa_asr_cpwer_v1.whisper_norm_english_v1.meeteval_v1",
         "sa_asr.zh.cpwer.conversion_sa_asr_cpwer_v1.gstar_norm_v1.meeteval_v1",
     }
     assert all(row["computation_node_ids"][0] == "conversion/sa_asr__cpwer" for row in sa_asr_rows)
+
+    cpcer_rows = [row for row in rows if row["task_alias"] == "sa_asr" and row["metric"] == "cpcer"]
+    assert [row["pipeline_id"] for row in cpcer_rows] == [
+        "sa_asr.zh.cpcer.conversion_sa_asr_ear1_submission_v1.ear1_norm_v1.ear1_scorer_v1"
+    ]
+    assert cpcer_rows[0]["computation_node_ids"] == [
+        "conversion/sa_asr__ear1_submission",
+        "normalization/ear1_norm",
+        "scoring/ear1_scorer",
+    ]
 
 
 def test_pipeline_catalog_asr_canonical_rows_use_canonical_public_metrics() -> None:
@@ -71,5 +102,5 @@ def test_pipeline_catalog_asr_canonical_rows_use_canonical_public_metrics() -> N
     assert {
         row["pipeline_id"]
         for row in asr_rows
-        if row["pipeline_id"].endswith("canonical_itn_cs_v1.token_mer_v1")
-    } == {"asr.cs.mer.canonical_itn_cs_v1.token_mer_v1"}
+        if row["pipeline_id"].endswith("canonical_itn_cs_v2.token_mer_v1")
+    } == {"asr.cs.mer.canonical_itn_cs_v2.token_mer_v1"}

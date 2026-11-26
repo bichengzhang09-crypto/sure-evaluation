@@ -17,6 +17,8 @@ htmlcov/
 **/.venv/
 **/checkpoints/
 **/uv.lock
+!src/sure_eval/evaluation/nodes/normalization/funasr_itn/uv.lock
+!src/sure_eval/evaluation/nodes/normalization/nemo_norm/uv.lock
 runtime/
 
 # Large model artifacts
@@ -28,6 +30,7 @@ runtime/
 *.bin
 
 # Local outputs
+.sure-eval-demo/
 artifacts/
 reports/*
 !reports/sota/

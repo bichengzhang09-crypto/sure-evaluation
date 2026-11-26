@@ -9,6 +9,11 @@ _TASK_MODULES = {
     "asr": "sure_eval.evaluation.scripts.asr",
     "s2tt": "sure_eval.evaluation.scripts.s2tt",
     "kws": "sure_eval.evaluation.scripts.kws",
+    "vad": "sure_eval.evaluation.scripts.vad",
+    "full_duplex": "sure_eval.evaluation.scripts.full_duplex",
+    "doa": "sure_eval.evaluation.scripts.doa",
+    "lid": "sure_eval.evaluation.scripts.lid",
+    "sv": "sure_eval.evaluation.scripts.sv",
     "classification": "sure_eval.evaluation.scripts.classification",
     "ser": "sure_eval.evaluation.scripts.classification",
     "gr": "sure_eval.evaluation.scripts.classification",
@@ -20,6 +25,8 @@ _TASK_MODULES = {
     "tts": "sure_eval.evaluation.scripts.tts",
     "vc": "sure_eval.evaluation.scripts.vc",
     "tse": "sure_eval.evaluation.scripts.tse",
+    "tta": "sure_eval.evaluation.scripts.tta",
+    "rir": "sure_eval.evaluation.scripts.rir",
 }
 
 

@@ -18,18 +18,33 @@ from sure_eval.evaluation.nodes.normalization.aispeech_norm import (
     normalize_codeswitch_asr_files,
 )
 from sure_eval.evaluation.nodes.normalization.canonical_itn import normalize_canonical_asr_files
+from sure_eval.evaluation.nodes.normalization.giga_norm import (
+    LANGUAGE_PROFILES as GIGA_LANGUAGE_PROFILES,
+    normalize_giga_asr_files,
+    profile_for_language,
+)
+from sure_eval.evaluation.nodes.normalization.nemo_norm import normalize_nemo_key_text_files
 from sure_eval.evaluation.nodes.normalization.punctuation_strip_norm import (
     normalize_punctuation_strip_key_text_files,
 )
-from sure_eval.evaluation.nodes.normalization.whisper_norm import normalize_whisper_asr_files
+from sure_eval.evaluation.nodes.normalization.funasr_itn import (
+    SUPPORTED_PROFILES as FUNASR_PROFILES,
+    normalize_funasr_files,
+)
 from sure_eval.evaluation.nodes.normalization.wetext_norm import (
     SUPPORTED_PROFILES as WETEXT_SUPPORTED_PROFILES,
+)
+from sure_eval.evaluation.nodes.normalization.wetext_norm import (
     normalize_wetext_key_text_files,
 )
-from sure_eval.evaluation.nodes.scoring.wenet_wer import (
-    score_codeswitch_mer,
-    score_wenet_cer,
-    score_wenet_wer,
+from sure_eval.evaluation.nodes.normalization.whisper_norm import normalize_whisper_asr_files
+from sure_eval.evaluation.nodes.normalization.xnorm import (
+    SUPPORTED_PROFILES as XNORM_PROFILES,
+    normalize_xnorm_key_text_files,
+)
+from sure_eval.evaluation.nodes.normalization.etc_canonicalization import (
+    SUPPORTED_PROFILES as ETC_SUPPORTED_PROFILES,
+    normalize_etc_key_text_files,
 )
 from sure_eval.evaluation.nodes.scoring.sctk_sclite import (
     score_sctk_sclite_cer,
@@ -37,6 +52,11 @@ from sure_eval.evaluation.nodes.scoring.sctk_sclite import (
 )
 from sure_eval.evaluation.nodes.scoring.token_cer import score_token_cer
 from sure_eval.evaluation.nodes.scoring.token_mer import score_token_mer
+from sure_eval.evaluation.nodes.scoring.wenet_wer import (
+    score_codeswitch_mer,
+    score_wenet_cer,
+    score_wenet_wer,
+)
 from sure_eval.evaluation.pipeline_identity import (
     build_atomic_pipeline_id,
     canonical_metric,
@@ -98,7 +118,9 @@ def evaluate_asr_files(
     """Evaluate ASR key-text files through the configured task pipeline."""
 
     normalized_metric = _normalize_metric(language=language, metric=metric)
-    normalized_scorer = _normalize_scorer(language=language, metric=normalized_metric, scorer=scorer)
+    normalized_scorer = _normalize_scorer(
+        language=language, metric=normalized_metric, scorer=scorer
+    )
     input_files = EvaluationFiles.from_ref_hyp(ref_file=ref_file, hyp_file=hyp_file)
     _ASR_CONTRACTS[normalized_metric].validate(input_files)
     if language == "cs" and normalized_metric not in _CANONICAL_METRICS:
@@ -108,7 +130,9 @@ def evaluate_asr_files(
             raise ValueError("ASR code-switch MER does not support explicit scorer selection")
         if normalizer:
             raise ValueError("ASR code-switch MER does not support explicit normalizer selection")
-        return _evaluate_codeswitch(ref_file, hyp_file, metric=normalized_metric, input_files=input_files)
+        return _evaluate_codeswitch(
+            ref_file, hyp_file, metric=normalized_metric, input_files=input_files
+        )
     normalized_normalizer = _normalize_normalizer(
         language=language,
         metric=normalized_metric,
@@ -138,7 +162,9 @@ def _evaluate_regular(
     input_files: EvaluationFiles,
 ) -> EvaluationReport:
     input_contract = _ASR_CONTRACTS[metric]
-    normalizer_node, normalizer_label = _normalization_node(language=language, normalizer=normalizer)
+    normalizer_node, normalizer_label = _normalization_node(
+        language=language, normalizer=normalizer
+    )
     scoring_node, score_label = _scoring_node(metric=metric, scorer=scorer)
     components = (
         _normalizer_component(language=language, normalizer_label=normalizer_label),
@@ -241,9 +267,7 @@ def _normalize_normalizer(*, language: str, metric: str, normalizer: str | None)
     if metric in _CANONICAL_METRICS:
         if normalized in {"", "canonical", "canonical_itn", "normalization/canonical_itn"}:
             return "canonical"
-        raise ValueError(
-            f"ASR {metric} requires the canonical_itn normalizer, got {normalizer!r}"
-        )
+        raise ValueError(f"ASR {metric} requires the canonical_itn normalizer, got {normalizer!r}")
     if normalized in {"canonical", "canonical_itn", "normalization/canonical_itn"}:
         raise ValueError("normalization/canonical_itn requires a canonical execution selector")
     if not normalized:
@@ -251,17 +275,32 @@ def _normalize_normalizer(*, language: str, metric: str, normalizer: str | None)
             return "whisper"
         if language == "zh" and metric == "cer":
             return "wetext:zh_itn"
+        if language == "ar" and metric == "cer":
+            return "nemo:ar_tn"
+        if language in FUNASR_PROFILES:
+            return f"funasr:{language}"
+        if language in GIGA_LANGUAGE_PROFILES:
+            return f"giga:{profile_for_language(language)}"
         return "aispeech"
     if normalized.startswith("wetext:"):
         profile = normalized.split(":", 1)[1]
         _validate_wetext_profile_for_language(language=language, profile=profile)
         return f"wetext:{profile}"
+    if normalized.startswith("giga:"):
+        profile = normalized.split(":", 1)[1]
+        return f"giga:{_validated_giga_profile(language=language, profile=profile)}"
+    if normalized in {"giga", "giga_norm", "normalization/giga_norm"}:
+        return f"giga:{_validated_giga_profile(language=language, profile=None)}"
     if normalized in {"whisper", "whisper_norm", "normalization/whisper_norm"}:
         if language != "en" or metric != "wer":
             raise ValueError("whisper_norm is only a default-supported normalizer for English WER")
         return "whisper"
     if normalized in {"aispeech", "aispeech_norm", "normalization/aispeech_norm"}:
         return "aispeech"
+    if normalized.startswith("funasr:"):
+        profile = normalized.split(":", 1)[1]
+        _validate_funasr_profile_for_language(language=language, profile=profile)
+        return f"funasr:{profile}"
     if normalized in {
         "punctuation_strip",
         "punctuation_strip_norm",
@@ -269,6 +308,34 @@ def _normalize_normalizer(*, language: str, metric: str, normalizer: str | None)
         "normalization/punctuation_strip_norm",
     }:
         return "punctuation_strip"
+    if normalized in {
+        "nemo",
+        "nemo_norm",
+        "nemo:ar_tn",
+        "normalization/nemo_norm",
+    }:
+        if language != "ar":
+            raise ValueError("nemo_norm currently supports only Arabic ASR")
+        return "nemo:ar_tn"
+    if normalized in {"xnorm", "xnorm_norm", "normalization/xnorm"}:
+        _validate_xnorm_profile_for_language(language=language, profile=language)
+        return f"xnorm:{language}"
+    if normalized.startswith("xnorm:"):
+        profile = normalized.split(":", 1)[1]
+        _validate_xnorm_profile_for_language(language=language, profile=profile)
+        return f"xnorm:{profile}"
+    if normalized in {
+        "etc",
+        "etc_canonicalization",
+        "etc-canonicalization",
+        "normalization/etc_canonicalization",
+    }:
+        _validate_etc_profile_for_language(language=language, profile=language)
+        return f"etc:{language}"
+    if normalized.startswith("etc:"):
+        profile = normalized.split(":", 1)[1]
+        _validate_etc_profile_for_language(language=language, profile=profile)
+        return f"etc:{profile}"
     raise ValueError(f"Unsupported ASR normalizer: {normalizer}")
 
 
@@ -309,6 +376,12 @@ def _normalization_node(*, language: str, normalizer: str):
             lambda files: normalize_wetext_key_text_files(files, profile=profile),
             f"wetext_{profile}",
         )
+    if normalizer.startswith("giga:"):
+        profile = normalizer.split(":", 1)[1]
+        return (
+            lambda files: normalize_giga_asr_files(files, language=language, profile=profile),
+            f"giga_{profile.lower()}",
+        )
     if normalizer == "whisper":
         return (
             lambda files: normalize_whisper_asr_files(
@@ -323,10 +396,33 @@ def _normalization_node(*, language: str, normalizer: str):
             lambda files: normalize_asr_files(files, language=language),
             "aispeech_norm",
         )
+    if normalizer.startswith("funasr:"):
+        profile = normalizer.split(":", 1)[1]
+        return (
+            lambda files: normalize_funasr_files(files, profile=profile),
+            f"funasr_{profile}",
+        )
     if normalizer == "punctuation_strip":
         return (
             lambda files: normalize_punctuation_strip_key_text_files(files, language=language),
             "punctuation_strip_norm",
+        )
+    if normalizer == "nemo:ar_tn":
+        return (
+            lambda files: normalize_nemo_key_text_files(files),
+            "nemo_norm",
+        )
+    if normalizer.startswith("xnorm:"):
+        profile = normalizer.split(":", 1)[1]
+        return (
+            lambda files: normalize_xnorm_key_text_files(files, language=profile),
+            f"xnorm_{profile}",
+        )
+    if normalizer.startswith("etc:"):
+        profile = normalizer.split(":", 1)[1]
+        return (
+            lambda files: normalize_etc_key_text_files(files, language=profile),
+            f"etc_{profile}",
         )
     raise ValueError(f"Unsupported ASR normalizer: {normalizer}")
 
@@ -358,14 +454,36 @@ def _normalizer_component(*, language: str, normalizer_label: str):
             "normalization/wetext_norm",
             profile=normalizer_label.removeprefix("wetext_"),
         )
+    if normalizer_label.startswith("giga_"):
+        return node_component(
+            "normalization/giga_norm",
+            profile=normalizer_label.removeprefix("giga_"),
+        )
     if normalizer_label == "whisper_norm":
         return node_component("normalization/whisper_norm", profile="english")
     if normalizer_label == "aispeech_norm":
         return node_component("normalization/aispeech_norm", profile=language)
+    if normalizer_label.startswith("funasr_"):
+        return node_component(
+            "normalization/funasr_itn",
+            profile=normalizer_label.removeprefix("funasr_"),
+        )
     if normalizer_label == "canonical_itn":
         return node_component("normalization/canonical_itn", profile=language)
     if normalizer_label == "punctuation_strip_norm":
         return node_component("normalization/punctuation_strip_norm")
+    if normalizer_label == "nemo_norm":
+        return node_component("normalization/nemo_norm", profile="ar_tn")
+    if normalizer_label.startswith("xnorm_"):
+        return node_component(
+            "normalization/xnorm",
+            profile=normalizer_label.removeprefix("xnorm_"),
+        )
+    if normalizer_label.startswith("etc_"):
+        return node_component(
+            "normalization/etc_canonicalization",
+            profile=normalizer_label.removeprefix("etc_"),
+        )
     raise ValueError(f"Unsupported ASR normalizer label: {normalizer_label}")
 
 
@@ -379,6 +497,18 @@ def _scoring_node_id(score_label: str) -> str:
     raise ValueError(f"Unsupported ASR scoring label: {score_label}")
 
 
+def _validated_giga_profile(*, language: str, profile: str | None) -> str:
+    if not profile:
+        return profile_for_language(language)
+    normalized = profile.upper().strip()
+    expected = profile_for_language(language)
+    if normalized != expected:
+        raise ValueError(
+            f"giga_norm profile {profile!r} does not match ASR language={language!r}; expected {expected!r}"
+        )
+    return normalized
+
+
 def _validate_wetext_profile_for_language(*, language: str, profile: str) -> None:
     if profile not in WETEXT_SUPPORTED_PROFILES:
         supported = ", ".join(sorted(WETEXT_SUPPORTED_PROFILES))
@@ -387,7 +517,9 @@ def _validate_wetext_profile_for_language(*, language: str, profile: str) -> Non
     if language_family is None:
         raise ValueError(f"wetext_norm is not mapped for ASR language={language!r}")
     if not profile.startswith(f"{language_family}_"):
-        raise ValueError(f"wetext_norm profile {profile!r} does not match ASR language={language!r}")
+        raise ValueError(
+            f"wetext_norm profile {profile!r} does not match ASR language={language!r}"
+        )
 
 
 def _wetext_language_family(language: str) -> str | None:
@@ -399,6 +531,34 @@ def _wetext_language_family(language: str) -> str | None:
     if normalized in {"ja", "jp", "jpn"}:
         return "ja"
     return None
+
+
+def _validate_funasr_profile_for_language(*, language: str, profile: str) -> None:
+    if profile not in FUNASR_PROFILES:
+        supported = ", ".join(sorted(FUNASR_PROFILES))
+        raise ValueError(f"Unsupported funasr_itn profile {profile!r}; supported: {supported}")
+    if FUNASR_PROFILES[profile].language != language:
+        raise ValueError(f"funasr_itn profile {profile!r} does not match ASR language {language!r}")
+
+
+def _validate_xnorm_profile_for_language(*, language: str, profile: str) -> None:
+    if profile not in XNORM_PROFILES:
+        supported = ", ".join(sorted(XNORM_PROFILES))
+        raise ValueError(f"Unsupported xnorm profile {profile!r}; supported: {supported}")
+    if profile != language:
+        raise ValueError(f"xnorm profile {profile!r} does not match ASR language {language!r}")
+
+
+def _validate_etc_profile_for_language(*, language: str, profile: str) -> None:
+    if profile not in ETC_SUPPORTED_PROFILES:
+        supported = ", ".join(sorted(ETC_SUPPORTED_PROFILES))
+        raise ValueError(
+            f"Unsupported etc_canonicalization profile {profile!r}; supported: {supported}"
+        )
+    if profile != language:
+        raise ValueError(
+            f"etc_canonicalization profile {profile!r} does not match ASR language {language!r}"
+        )
 
 
 def _cleanup_trace_temp_files(trace: tuple[PipelineNodeResult, ...]) -> None:

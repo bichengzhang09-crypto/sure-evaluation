@@ -48,7 +48,10 @@ def build_agent_plan(
             metric=metric,
             metrics=metrics,
         )
-        routes = [_route_plan(task, language=language, metric=item, checker=checker) for item in selected_metrics]
+        routes = [
+            _route_plan(task, language=language, metric=item, checker=checker)
+            for item in selected_metrics
+        ]
     root_env = _root_env_payload() if include_root_env else {"status": "skipped", "checks": []}
     blocking_issues = _blocking_issues(root_env=root_env, routes=routes)
 
@@ -201,7 +204,18 @@ def _setup_hint(
         else:
             command = "# no pip packages declared"
     elif runtime_type == "uv":
-        command = f"cd {node_path} && uv sync"
+        commands = []
+        python = runtime.get("python")
+        if python:
+            commands.append(f"uv venv --python {shlex.quote(str(python))}")
+        sync_command = "uv sync"
+        if runtime.get("frozen"):
+            sync_command += " --frozen"
+        commands.append(sync_command)
+        post_setup_script = runtime.get("post_setup_script")
+        if post_setup_script:
+            commands.append(f".venv/bin/python {shlex.quote(str(post_setup_script))}")
+        command = f"cd {node_path} && " + " && ".join(commands)
     elif runtime_type == "binary":
         build_script = runtime.get("build_script")
         if build_script:
@@ -231,6 +245,9 @@ def _asset_hints(node_path: Path, node_env: dict[str, Any]) -> list[dict[str, An
                 "target": target,
                 "env": item.get("env"),
             }
+            for key in ("revision", "layout", "sha256"):
+                if item.get(key):
+                    asset[key] = item[key]
             if target and not str(target).startswith("${"):
                 asset["target_path"] = str(node_path / str(target))
             assets.append(asset)
@@ -310,7 +327,9 @@ def _blocking_issues(*, root_env: dict[str, Any], routes: list[dict[str, Any]]) 
 
 def _next_steps(blocking_issues: list[str], routes: list[dict[str, Any]]) -> list[str]:
     if not blocking_issues:
-        return ["Run `sure-eval metric describe`, then `sure-eval metric run` with the declared inputs."]
+        return [
+            "Run `sure-eval metric describe`, then `sure-eval metric run` with the declared inputs."
+        ]
     commands = []
     for route in routes:
         for check in route.get("env_checks") or []:
@@ -318,6 +337,11 @@ def _next_steps(blocking_issues: list[str], routes: list[dict[str, Any]]) -> lis
             command = setup.get("command") if isinstance(setup, dict) else None
             if command and command not in commands:
                 commands.append(command)
+            assets = setup.get("assets") if isinstance(setup, dict) else None
+            if assets:
+                download_command = f"sure-eval env download --node {check.get('node_id')}"
+                if download_command not in commands:
+                    commands.append(download_command)
     return commands or ["Resolve the blocking environment checks before running metrics."]
 
 
