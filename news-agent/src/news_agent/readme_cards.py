@@ -77,27 +77,22 @@ def tile(entry: Entry) -> str:
 
 
 def readme_board(entries: list[Entry]) -> tuple[str, dict[str, str]]:
-    """Render newest-first cards inside a vertically scrollable README rail."""
+    """Render newest-first cards in GitHub's native horizontal README scroller."""
     if not entries:
         return "No releases yet.\n", {}
 
     entries = sorted(entries, key=lambda entry: (entry.published_at, entry.id), reverse=True)
-    cards = []
+    links = []
     assets: dict[str, str] = {}
     for entry in entries:
         path = f"docs/news/cards/{entry.id}.svg"
         assets[path] = tile(entry)
         alt = escape(f"{entry.title} · {_card_summary(entry)} · {_metric_labels(entry)}", quote=True)
-        cards.append(
-            f'<p style="margin:0 0 16px"><a href="{escape(pr_url(entry), quote=True)}">'
-            f'<img src="./{path}" width="760" style="max-width:100%;height:auto" alt="{alt}"></a></p>'
+        links.append(
+            f'<a href="{escape(pr_url(entry), quote=True)}">'
+            f'<img src="./{path}" width="760" alt="{alt}"></a>'
         )
 
-    rail = (
-        '<div style="height:460px;overflow-y:auto;overflow-x:hidden;padding:16px;'
-        'border:1px solid #d4d9df;border-radius:14px;background:#f7f8fa">\n'
-        + "\n".join(cards)
-        + "\n</div>"
-    )
-    board = f"## Latest evaluation support\n\n{rail}\n\n[View announcement history ↗]({PAGES})\n"
+    strip = "<pre>" + "".join(links) + "</pre>"
+    board = f"## Latest evaluation support\n\n{strip}\n\n[View announcement history ↗]({PAGES})\n"
     return board, assets

@@ -120,7 +120,7 @@ def test_english_page_and_readme_boundaries(facts, copy):
     output = render([entry], readme)
     validate_output({"README.md": readme}, output, lambda p: (ROOT / p).is_file())
     assert outside_block(readme) == outside_block(output["README.md"])
-    assert "overflow-y:auto" in output["README.md"]
+    assert "<pre>" in output["README.md"]
     assert 'width="760"' in output["README.md"]
     assert "Latest evaluation support" in output["README.md"]
     assert "docs/news/readme-cards" not in output["README.md"]
@@ -280,7 +280,7 @@ def test_only_five_recent_entries_are_in_readme(facts, copy):
     for i, entry in enumerate(entries):
         entry.id = f"entry-{i}"
     output = render(entries, START + "\n" + END)
-    assert output["README.md"].count("overflow-y:auto") == 1
+    assert output["README.md"].count("<pre>") == 1
     assert output["README.md"].count('width="760"') == 5
     assert sum(path.startswith("docs/news/cards/entry-") for path in output) == 5
     assert output["docs/news/index.md"].count('<a id="') == 7
