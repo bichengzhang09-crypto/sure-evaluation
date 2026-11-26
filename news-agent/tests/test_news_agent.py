@@ -126,8 +126,8 @@ def test_english_page_and_readme_boundaries(facts, copy):
     assert "docs/news/readme-cards" not in output["README.md"]
     assert "docs/news/readme-rail.svg" not in output["README.md"]
     assert "View announcement history" in output["README.md"]
-    assert "support-rail-viewport" in output["docs/news/index.html"]
-    assert "height:460px;overflow-y:scroll" in output["docs/news/index.html"]
+    assert "latest-support" not in output["docs/news/index.html"]
+    assert "Latest evaluation support" not in output["docs/news/index.html"]
     assert "docs/news/cards/ear-1.svg" in output
     assert "RECENT SUPPORT" in output["docs/news/cards/ear-1.svg"]
     assert "01 · NEW SUPPORT" not in output["docs/news/cards/ear-1.svg"]
@@ -161,8 +161,8 @@ def test_visual_page_keeps_hero_timeline_and_language_switch(facts, copy):
     assert 'data-language="en"' in output and 'data-language="zh"' in output
     assert 'data-zh="EAR-1 挑战赛评分支持"' in output
     assert ".release>span[id]{display:none}" in output
-    assert 'id="latest-support"' in output
-    assert 'href="https://github.com/PigeonDan1/sure-evaluation/pull/49"' in output
+    assert 'id="latest-support"' not in output
+    assert 'Latest evaluation support' not in output
 
 
 def test_visual_publication_only_allows_named_assets_and_checks_html_links(facts, copy):

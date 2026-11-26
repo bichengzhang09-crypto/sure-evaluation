@@ -159,23 +159,6 @@ def render_page(entries: list[Entry]) -> str:
     template = files("news_agent").joinpath("templates/news.html").read_text(encoding="utf-8")
     latest = active[0] if active else None
     repository = "https://github.com/bichengzhang09-crypto/sure-evaluation"
-    rail_cards = []
-    for entry in active[:5]:
-        summary = entry.summary
-        rail_cards.append(
-            f'<a class="support-rail-card" href="{escape(pr_url(entry), quote=True)}">'
-            f'<img src="cards/{escape(entry.id, quote=True)}.svg" width="760" '
-            f'alt="{escape(entry.title + " · " + summary, quote=True)}"></a>'
-        )
-    rail = (
-        '<section class="support-rail" id="latest-support" aria-labelledby="latest-support-title">'
-        '<div class="support-rail-heading"><div><span class="support-rail-kicker">RECENT SUPPORT</span>'
-        '<h2 id="latest-support-title">Latest evaluation support</h2></div>'
-        '<a href="#updates">View full history ↗</a></div>'
-        '<div class="support-rail-frame"><div class="support-rail-viewport">'
-        + "".join(rail_cards)
-        + '</div><div class="support-rail-fade" aria-hidden="true"></div></div></section>'
-    )
     replacements = {
         "{{REPOSITORY}}": repository,
         "{{DATE}}": latest.published_at.strftime("%d %b %Y") if latest else "No updates yet",
@@ -183,7 +166,6 @@ def render_page(entries: list[Entry]) -> str:
         "{{ROUTES}}": str(len({p for e in active for p in e.support.pipeline_ids})),
         "{{TASKS}}": str(len({t for e in active for t in e.support.tasks})),
         "{{FILTERS}}": chips,
-        "{{RAIL}}": rail,
         "{{CONTENT}}": "".join(articles),
     }
     for token, value in replacements.items():
