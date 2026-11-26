@@ -1,4 +1,4 @@
-"""Small linked release cards for GitHub's horizontally scrollable README."""
+"""Linked release cards for the repository README announcement rail."""
 
 from html import escape
 from textwrap import wrap
@@ -7,13 +7,6 @@ from .contract import Entry
 from .web import METRICS, PR_NUMBERS, pipeline_brief, pr_url, task_label
 
 PAGES = "https://bichengzhang09-crypto.github.io/sure-evaluation/"
-PALETTES = (
-    ("#eff9e7", "#d9f1e8", "#b7d9c5", "#22594a"),
-    ("#edf8ff", "#dfe9fb", "#c1d6e9", "#345775"),
-    ("#fff5e3", "#fae4de", "#e8cfc1", "#794d3d"),
-    ("#f6f2ff", "#e8e5f9", "#d7cfea", "#584d78"),
-    ("#edf8f6", "#d8edf1", "#bad8df", "#315e68"),
-)
 CARD_SUMMARIES = {
     "ear-1": "Score EAR-1 submissions for speaker diarization with DER and Mandarin speaker-attributed ASR with cpCER.",
     "ear-1-scoring": "Score EAR-1 submissions for speaker diarization with DER and Mandarin speaker-attributed ASR with cpCER.",
@@ -83,55 +76,28 @@ def tile(entry: Entry) -> str:
 </svg>'''
 
 
-def readme_tile(entry: Entry, palette: tuple[str, str, str, str]) -> str:
-    """Render a compact card sized for the README's horizontal strip."""
-    start, end, edge, ink = palette
-    title = _lines(entry.title, 27, 2)
-    summary = _lines(_card_summary(entry), 47, 2)
-    brief = _lines(pipeline_brief(entry), 45, 2)
-    metrics = _lines(_metric_labels(entry), 38, 1)
-    tasks = " · ".join(task_label(task) for task in entry.support.tasks)
-    pr_number = PR_NUMBERS.get(entry.evidence.source_commit)
-    pr_label = f"PR #{pr_number} ↗" if pr_number else "SOURCE ↗"
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="398" height="264" viewBox="0 0 398 264" role="img" aria-labelledby="title desc">
-<title id="title">{escape(entry.title)}</title>
-<desc id="desc">{escape(_card_summary(entry))}</desc>
-<defs><linearGradient id="wash" x2="1" y2="1"><stop stop-color="{start}"/><stop offset="1" stop-color="{end}"/></linearGradient></defs>
-<rect width="398" height="264" fill="#ffffff"/>
-<rect x="7" y="8" width="384" height="248" rx="22" fill="url(#wash)" stroke="{edge}"/>
-<g font-family="Arial, Helvetica, sans-serif" fill="{ink}">
-  <text x="26" y="37" font-size="11" font-weight="700">RECENT SUPPORT · {escape(tasks)}</text>
-  <text x="369" y="37" text-anchor="end" font-size="12">{entry.published_at:%d %b %Y}</text>
-  {_text_rows(title, 26, 71, 22, ink, 700, 24)}
-  {_text_rows(summary, 26, 119 if len(title) == 1 else 143, 13, ink, 400, 18)}
-  <path d="M26 169h346" stroke="{edge}"/>
-  <text x="26" y="189" font-size="10" font-weight="700" letter-spacing="1.2">METRICS</text>
-  {_text_rows(metrics, 105, 189, 12, ink, 700, 16)}
-  <text x="26" y="211" font-size="10" font-weight="700" letter-spacing="1.2">PIPELINE</text>
-  {_text_rows(brief, 105, 211, 11, ink, 600, 15)}
-  <text x="26" y="241" font-size="12" font-weight="700">{escape(pr_label)}</text>
-  <text x="369" y="241" text-anchor="end" font-size="10" font-family="monospace">{len(entry.support.pipeline_ids):02d} route{'s' if len(entry.support.pipeline_ids) != 1 else ''}</text>
-</g>
-</svg>'''
-
-
 def readme_board(entries: list[Entry]) -> tuple[str, dict[str, str]]:
-    """Render linked cards on one line so GitHub provides horizontal scrolling."""
+    """Render newest-first cards inside a vertically scrollable README rail."""
     if not entries:
         return "No releases yet.\n", {}
 
-    links = []
+    entries = sorted(entries, key=lambda entry: (entry.published_at, entry.id), reverse=True)
+    cards = []
     assets: dict[str, str] = {}
-    for index, entry in enumerate(entries):
-        page_path = f"docs/news/cards/{entry.id}.svg"
-        readme_path = f"docs/news/readme-cards/{entry.id}.svg"
-        assets[page_path] = tile(entry)
-        assets[readme_path] = readme_tile(entry, PALETTES[index % len(PALETTES)])
+    for entry in entries:
+        path = f"docs/news/cards/{entry.id}.svg"
+        assets[path] = tile(entry)
         alt = escape(f"{entry.title} · {_card_summary(entry)} · {_metric_labels(entry)}", quote=True)
-        links.append(
-            f'<a href="{escape(pr_url(entry), quote=True)}">'
-            f'<img src="./{readme_path}" width="398" alt="{alt}"></a>'
+        cards.append(
+            f'<p style="margin:0 0 16px"><a href="{escape(pr_url(entry), quote=True)}">'
+            f'<img src="./{path}" width="760" style="max-width:100%;height:auto" alt="{alt}"></a></p>'
         )
-    strip = "<pre>" + "".join(links) + "</pre>"
-    board = f"## Recently supported\n\n{strip}\n\n[View announcement history ↗]({PAGES})\n"
+
+    rail = (
+        '<div style="height:460px;overflow-y:auto;overflow-x:hidden;padding:16px;'
+        'border:1px solid #d4d9df;border-radius:14px;background:#f7f8fa">\n'
+        + "\n".join(cards)
+        + "\n</div>"
+    )
+    board = f"## Latest evaluation support\n\n{rail}\n\n[View announcement history ↗]({PAGES})\n"
     return board, assets

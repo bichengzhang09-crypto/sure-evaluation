@@ -20,7 +20,7 @@ from .renderer import END, START, diff, outside_block
 
 def allowed(path: str) -> bool:
     safe_path(path)
-    if re.fullmatch(r"docs/news/(?:cards|readme-cards)/[a-z0-9]+(?:-[a-z0-9]+)*\.svg", path):
+    if re.fullmatch(r"docs/news/cards/[a-z0-9]+(?:-[a-z0-9]+)*\.svg", path):
         return True
     return path in {"README.md", "NEWS.md", "docs/news/index.html", "docs/news/banner.svg"} or (
         path.startswith("docs/news/") and path.endswith((".md", ".yaml")))
